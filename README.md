@@ -67,6 +67,8 @@ Os nomes estão no `.env.example` do avant-infra; os valores, só nas VMs.
 
 ## Desenvolvimento
 
+Para subir o Avant inteiro na máquina (banco, API, worker e painel), siga o [guia de desenvolvimento](https://github.com/PedroH3nri/avant-infra/blob/develop/docs/desenvolvimento.md) do avant-infra.
+
 ```bash
 uv sync
 uv run ruff format . && uv run ruff check . && uv run mypy
