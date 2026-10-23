@@ -218,3 +218,32 @@ def test_lock_skips_a_second_run(services: Services) -> None:
         assert locked
         assert sync_network.delay(str(c.id), str(n.id)).get() == {"skipped": "locked"}
     assert sync_network.delay(str(c.id), str(n.id)).get()["test"]["ok"]
+
+
+def test_sync_publishes_network_events(services: Services) -> None:
+    if services.redis is None:
+        pytest.skip("defina AVANT_TEST_REDIS_URL")
+    import json
+
+    from avant_worker.events import channel
+
+    c = company(services)
+    n = network(services, c)
+    inventory(fake(services))
+    pubsub = services.redis.pubsub()  # type: ignore[no-untyped-call]
+    pubsub.subscribe(channel(c.id))
+    pubsub.get_message(timeout=1)  # confirmação da inscrição
+
+    sync_network.delay(str(c.id), str(n.id)).get()
+    events = []
+    while (message := pubsub.get_message(timeout=0.5)) is not None:
+        events.append(json.loads(message["data"]))
+    pubsub.close()
+    # Teste, sites e ad units: a tela busca o estado de novo a cada aviso.
+    assert events == [{"type": "network.updated", "data": {"network_id": str(n.id)}}] * 3
+
+
+def test_publish_without_redis_is_a_no_op() -> None:
+    from avant_worker.events import publish
+
+    publish(None, uuid.uuid4(), "network.updated", {"network_id": "x"})

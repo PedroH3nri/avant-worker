@@ -24,7 +24,8 @@ from avant_core.ports import GamError, GamUnavailable
 from celery import Task
 
 from avant_worker.app import app
-from avant_worker.services import get_services
+from avant_worker.events import NETWORK_UPDATED, publish
+from avant_worker.services import Services, get_services
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -57,6 +58,7 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                 check = sync.check_network(
                     services.uow(cid), network_id=nid, gam=gam, clock=clock, mailer=mailer
                 )
+                _updated(services, cid, nid)
                 result["test"] = {"ok": check.ok, "status": check.status.value}
                 if not check.ok:
                     log.info(
@@ -67,10 +69,13 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
             result["sites"] = sync.import_sites(
                 services.uow(cid), network_id=nid, gam=gam, clock=clock, mailer=mailer
             )
+            _updated(services, cid, nid)
             result["ad_units"] = sync.import_ad_units(
                 services.uow(cid), network_id=nid, gam=gam, clock=clock, mailer=mailer
             )
+            _updated(services, cid, nid)
         except GamError as exc:
+            _updated(services, cid, nid)  # a etapa ficou registrada como falha
             if not exc.permanent:
                 raise  # volta para a fila (autoretry)
             # Já ficou registrado na network e na NetworkSyncRun; não adianta tentar de novo.
@@ -97,13 +102,17 @@ def check_access(company_id: str, network_id: str) -> dict[str, Any]:
     with services.lock(f"gam:network:{network_id}", timeout=LOCK_SECONDS) as locked:
         if not locked:
             return {"skipped": "locked"}
-        check = sync.check_network(
-            services.uow(uuid.UUID(company_id)),
-            network_id=uuid.UUID(network_id),
-            gam=services.gam,
-            clock=services.clock,
-            mailer=services.mailer,
-        )
+        cid, nid = uuid.UUID(company_id), uuid.UUID(network_id)
+        try:
+            check = sync.check_network(
+                services.uow(cid),
+                network_id=nid,
+                gam=services.gam,
+                clock=services.clock,
+                mailer=services.mailer,
+            )
+        finally:
+            _updated(services, cid, nid)
     return {"ok": check.ok, "status": check.status.value, "error": check.error}
 
 
@@ -153,6 +162,10 @@ def _fan_out(task: "Task[Any, Any]", kwargs: dict[str, Any]) -> int:
     for company_id, network_id in networks:
         task.delay(str(company_id), str(network_id), **kwargs)
     return len(networks)
+
+
+def _updated(services: Services, company_id: uuid.UUID, network_id: uuid.UUID) -> None:
+    publish(services.redis, company_id, NETWORK_UPDATED, {"network_id": str(network_id)})
 
 
 def _flat(result: dict[str, Any]) -> dict[str, Any]:
