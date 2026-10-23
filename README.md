@@ -44,6 +44,9 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
   `gam_client.py`. 401/403 e 404 são falhas permanentes da network (três seguidas viram
   erro e aviso ao dono); 429, 5xx e falha de rede voltam para a fila em 1, 2, 4 e 8 minutos
   sem mudar o estado. Uma trava no Redis por network impede duas importações ao mesmo tempo.
+- **Avisos em tempo real**: depois de cada etapa de uma network, o worker publica
+  `{"type": "network.updated", "data": {"network_id"}}` no canal Redis
+  `avant:events:{company_id}`; a API repassa por SSE (`GET /api/v1/events`).
 - **Logs**: JSON em uma linha, com o stack trace quando uma tarefa falha.
 - **Métricas**: o worker publica os eventos do Celery; o `celery-exporter` do
   avant-infra transforma em métricas do Prometheus.
