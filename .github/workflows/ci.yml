@@ -1,4 +1,4 @@
-# Lint, tipos e testes ponta a ponta contra um Postgres 16.
+# Lint, tipos e testes ponta a ponta contra um Postgres 16 e um Redis 7.
 # O avant-core é privado: o secret AVANT_CORE_ACCESS (token só de leitura do
 # avant-core) entra na configuração do git só durante o uv sync.
 name: CI
@@ -19,9 +19,15 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       AVANT_TEST_MIGRATIONS_URL: postgresql+psycopg://avant_owner:owner@localhost:5432/avant_test
       AVANT_TEST_DATABASE_URL: postgresql+psycopg://avant_app:app@localhost:5432/avant_test
+      AVANT_TEST_REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

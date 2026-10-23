@@ -8,7 +8,8 @@ as tarefas, que montam os adaptadores e chamam os casos de uso.
 
 | Processo | Comando | Faz |
 | --- | --- | --- |
-| worker | `celery -A avant_worker.app worker -Q default,mail,gam -l info` | roda as tarefas |
+| worker | `celery -A avant_worker.app worker -Q default,mail -l info` | limpeza e e-mails |
+| worker-gam | `celery -A avant_worker.app worker -Q gam -c 2 -l info` | Google Ad Manager; o único com a chave da conta de serviço |
 | scheduler | `celery -A avant_worker.app beat -l info` | publica as tarefas agendadas; um só por ambiente |
 
 O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
@@ -24,6 +25,12 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | Tarefa | Quando | Faz |
 | --- | --- | --- |
 | `avant.default.purge_expired` | todo dia às 04:00 UTC | apaga sessões encerradas há mais de 30 dias e links de nova senha vencidos há mais de 7 |
+| `avant.gam.discover_mcm` | de hora em hora (minuto 5) | lê os child publishers da network da Groone: liga networks novas à Empresa do dono, guarda o MCM sem dono e desconecta o que foi encerrado |
+| `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem |
+| `avant.gam.schedule_tests` | todo dia às 03:00 UTC | uma `avant.gam.check_access` por network ativa |
+| `avant.gam.schedule_imports` | de 6 em 6 horas (minuto 20) | uma `avant.gam.sync_network(test=False)` por network ativa |
+
+A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar este pacote.
 
 ## Como funciona
 
@@ -33,14 +40,27 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 - **RLS**: tarefa de uma Empresa usa `services.uow(company_id)`. `trusted_uow()` só para
   limpeza e para varrer todas as Empresas.
 - **Conexões**: cada processo filho monta o próprio pool na primeira tarefa.
+- **GAM**: API REST do Ad Manager (v1), só leitura (escopo `admanager.readonly`), em
+  `gam_client.py`. 401/403 e 404 são falhas permanentes da network (três seguidas viram
+  erro e aviso ao dono); 429, 5xx e falha de rede voltam para a fila em 1, 2, 4 e 8 minutos
+  sem mudar o estado. Uma trava no Redis por network impede duas importações ao mesmo tempo.
 - **Logs**: JSON em uma linha, com o stack trace quando uma tarefa falha.
 - **Métricas**: o worker publica os eventos do Celery; o `celery-exporter` do
   avant-infra transforma em métricas do Prometheus.
 
 ## Variáveis
 
-`DATABASE_URL` (papel `avant_app`), `CELERY_BROKER_URL`, `REDIS_URL` (resultados) e
-`LOG_LEVEL`. Os nomes estão no `.env.example` do avant-infra.
+| Variável | Para quê |
+| --- | --- |
+| `DATABASE_URL` | papel `avant_app` |
+| `CELERY_BROKER_URL` | RabbitMQ |
+| `REDIS_URL` | resultados e travas; obrigatório em staging e produção |
+| `APP_BASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` | avisos por e-mail (`RESEND_API_KEY` obrigatório em staging e produção) |
+| `GAM_SERVICE_ACCOUNT_FILE` | caminho do JSON da chave da conta de serviço; só no worker-gam |
+| `GAM_GROONE_NETWORK_CODE` | network da Groone (MCM) |
+| `LOG_LEVEL` | padrão `INFO` |
+
+Os nomes estão no `.env.example` do avant-infra; os valores, só nas VMs.
 
 ## Desenvolvimento
 
@@ -49,10 +69,13 @@ uv sync
 uv run ruff format . && uv run ruff check . && uv run mypy
 export AVANT_TEST_MIGRATIONS_URL=postgresql+psycopg://avant_owner:SENHA@localhost:5432/avant_test
 export AVANT_TEST_DATABASE_URL=postgresql+psycopg://avant_app:SENHA@localhost:5432/avant_test
+export AVANT_TEST_REDIS_URL=redis://localhost:6379/15   # opcional: teste da trava
 uv run pytest
 ```
 
-Os testes rodam as tarefas no próprio processo (`task_always_eager`), contra o Postgres.
+Os testes rodam as tarefas no próprio processo (`task_always_eager`), contra o Postgres,
+com um GAM em memória (`tests/fake_gam.py`). O adaptador REST é testado com respostas
+gravadas do formato da API (`tests/test_gam_client.py`).
 A CI faz o mesmo e usa o secret `AVANT_CORE_ACCESS` (token só de leitura do avant-core).
 
 ## Imagem

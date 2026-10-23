@@ -53,3 +53,19 @@ def test_purge_expired(services: Services) -> None:
     with services.engine.connect() as conn:
         left = conn.execute(text("SELECT count(*) FROM sessions")).scalar_one()
     assert left == 1
+
+
+def test_deployed_envs_need_redis_and_resend() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from avant_worker.settings import Settings
+
+    with pytest.raises(ValidationError, match="REDIS_URL, RESEND_API_KEY"):
+        Settings(database_url="postgresql://x", avant_env="staging")
+    Settings(
+        database_url="postgresql://x",
+        avant_env="production",
+        redis_url="redis://r",
+        resend_api_key="re_x",
+    )
