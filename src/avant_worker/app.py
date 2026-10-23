@@ -1,0 +1,77 @@
+"""Aplicação Celery. Rodar com:
+
+celery -A avant_worker.app worker -Q default,mail,gam -l info
+celery -A avant_worker.app beat -l info
+
+Filas: ``default`` (limpeza e o resto), ``mail`` (e-mails) e ``gam`` (Google Ad Manager,
+que tem cota própria). A fila sai do nome da tarefa: ``avant.<fila>.<nome>``.
+"""
+
+import logging
+import os
+from typing import Any
+
+from celery import Celery, signals
+from celery.schedules import crontab
+
+from avant_worker.logs import configure_logging
+from avant_worker.settings import BrokerSettings
+
+QUEUES = ("default", "mail", "gam")
+
+
+def _route(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
+    parts = name.split(".")
+    queue = parts[1] if len(parts) > 2 and parts[0] == "avant" else "default"
+    return {"queue": queue if queue in QUEUES else "default"}
+
+
+def create_app(settings: BrokerSettings | None = None) -> Celery:
+    s = settings or BrokerSettings()
+    app = Celery("avant", include=["avant_worker.tasks.maintenance"])
+    app.conf.update(
+        broker_url=s.celery_broker_url,
+        result_backend=s.redis_url,
+        result_expires=24 * 3600,
+        task_serializer="json",
+        result_serializer="json",
+        accept_content=["json"],
+        timezone="UTC",
+        enable_utc=True,
+        # Só confirma a mensagem depois de terminar: se o worker cair, a tarefa volta para
+        # a fila. Por isso toda tarefa precisa ser idempotente.
+        task_acks_late=True,
+        task_reject_on_worker_lost=True,
+        worker_prefetch_multiplier=1,
+        task_default_queue="default",
+        task_routes=(_route,),
+        # Eventos para o celery-exporter (métricas no Prometheus).
+        worker_send_task_events=True,
+        task_send_sent_event=True,
+        broker_connection_retry_on_startup=True,
+        beat_schedule={
+            "maintenance-purge": {
+                "task": "avant.default.purge_expired",
+                "schedule": crontab(hour=4, minute=0),
+            },
+        },
+    )
+    return app
+
+
+app = create_app()
+
+
+@signals.setup_logging.connect
+def _logging(**_: Any) -> None:
+    # Sem este sinal, o Celery troca os handlers e os logs deixam de sair em JSON.
+    configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
+
+
+@signals.task_failure.connect
+def _failure(sender: Any = None, exception: BaseException | None = None, **_: Any) -> None:
+    logging.getLogger("avant.worker").error(
+        "tarefa falhou",
+        exc_info=exception,
+        extra={"task": getattr(sender, "name", None)},
+    )
