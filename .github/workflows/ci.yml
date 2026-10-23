@@ -1,0 +1,58 @@
+# Lint, tipos e testes ponta a ponta contra um Postgres 16.
+# O avant-core é privado: o secret AVANT_CORE_ACCESS (token só de leitura do
+# avant-core) entra na configuração do git só durante o uv sync.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AVANT_TEST_MIGRATIONS_URL: postgresql+psycopg://avant_owner:owner@localhost:5432/avant_test
+      AVANT_TEST_DATABASE_URL: postgresql+psycopg://avant_app:app@localhost:5432/avant_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Papéis do banco (como o avant-infra/postgres/init/01-roles.sh)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE avant_owner LOGIN PASSWORD 'owner';
+          CREATE ROLE avant_app LOGIN PASSWORD 'app' NOBYPASSRLS;
+          CREATE DATABASE avant_test OWNER avant_owner;
+          \c avant_test
+          ALTER SCHEMA public OWNER TO avant_owner;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          GRANT USAGE ON SCHEMA public TO avant_app;
+          ALTER DEFAULT PRIVILEGES FOR ROLE avant_owner IN SCHEMA public
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO avant_app;
+          ALTER DEFAULT PRIVILEGES FOR ROLE avant_owner IN SCHEMA public
+            GRANT USAGE, SELECT ON SEQUENCES TO avant_app;
+          CREATE EXTENSION citext;
+          SQL
+      - name: Dependências (com acesso de leitura ao avant-core)
+        env:
+          AVANT_CORE_ACCESS: ${{ secrets.AVANT_CORE_ACCESS }}
+        run: |
+          git config --global url."https://x-access-token:${AVANT_CORE_ACCESS}@github.com/PedroH3nri/avant-core".insteadOf "https://github.com/PedroH3nri/avant-core"
+          uv sync --frozen
+          git config --global --remove-section "url.https://x-access-token:${AVANT_CORE_ACCESS}@github.com/PedroH3nri/avant-core"
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+      - run: uv run pytest -q
