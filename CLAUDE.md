@@ -7,6 +7,7 @@ Worker e agendador (Celery) do Groone Avant. Leia o README antes de mudar algo.
 - Tarefa com `name="avant.<fila>.<nome>"`; a fila sai do nome (`task_routes` em `app.py`).
 - Tarefa de uma Empresa usa `services.uow(company_id)`. `trusted_uow()` (sem RLS) só para
   limpeza e para varrer todas as Empresas, sempre documentado na tarefa.
+- O GAM é só leitura: `gam_client.py` não ganha método que escreve sem revisão do Pedro.
 - Tarefas idempotentes: `acks_late` está ligado e uma tarefa pode rodar duas vezes.
 - Antes de abrir PR: `uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest`.
 - Nada de segredos no repositório. Mensagens e comentários em português.

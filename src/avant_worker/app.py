@@ -28,7 +28,7 @@ def _route(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
 
 def create_app(settings: BrokerSettings | None = None) -> Celery:
     s = settings or BrokerSettings()
-    app = Celery("avant", include=["avant_worker.tasks.maintenance"])
+    app = Celery("avant", include=["avant_worker.tasks.maintenance", "avant_worker.tasks.gam"])
     app.conf.update(
         broker_url=s.celery_broker_url,
         result_backend=s.redis_url,
@@ -53,6 +53,18 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "maintenance-purge": {
                 "task": "avant.default.purge_expired",
                 "schedule": crontab(hour=4, minute=0),
+            },
+            "gam-discover-mcm": {
+                "task": "avant.gam.discover_mcm",
+                "schedule": crontab(minute=5),
+            },
+            "gam-check-access": {
+                "task": "avant.gam.schedule_tests",
+                "schedule": crontab(hour=3, minute=0),
+            },
+            "gam-import-inventory": {
+                "task": "avant.gam.schedule_imports",
+                "schedule": crontab(hour="*/6", minute=20),
             },
         },
     )

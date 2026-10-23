@@ -6,14 +6,25 @@ na primeira tarefa, nunca herda o do pai.
 
 import os
 import uuid
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass, field
 
+import redis
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
+from avant_core.gam.sync import Gam
+from avant_core.mail import LogMailer, ResendMailer
+from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
 
+from avant_worker.gam_client import RestGamClient
 from avant_worker.settings import Settings
+
+
+class GamNotConfigured(RuntimeError):
+    """Tarefa da fila gam num worker sem a chave da conta de serviço."""
 
 
 @dataclass
@@ -21,17 +32,28 @@ class Services:
     settings: Settings
     engine: Engine
     clock: Clock
+    mailer: Mailer = field(default_factory=lambda: LogMailer(base_url="", show_links=False))
+    redis: "redis.Redis | None" = None
+    # Montado na primeira tarefa do GAM (ou entregue pronto nos testes).
+    gam_override: Gam | None = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
         map_entities()
+        self._gam: Gam | None = self.gam_override
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
         engine = create_engine(
             settings.database_url, pool_size=settings.db_pool_size, pool_pre_ping=True
         )
-        return cls(settings=settings, engine=engine, clock=SystemClock())
+        return cls(
+            settings=settings,
+            engine=engine,
+            clock=SystemClock(),
+            mailer=_mailer(settings),
+            redis=redis.Redis.from_url(settings.redis_url) if settings.redis_url else None,
+        )
 
     def uow(self, company_id: uuid.UUID) -> SqlAlchemyUnitOfWork:
         """Transação presa a uma Empresa (RLS)."""
@@ -40,6 +62,47 @@ class Services:
     def trusted_uow(self) -> SqlAlchemyUnitOfWork:
         """Sem RLS: só para limpeza e para varrer todas as Empresas."""
         return SqlAlchemyUnitOfWork(self.engine, bypass_rls=True)
+
+    @property
+    def gam(self) -> Gam:
+        if self._gam is None:
+            s = self.settings
+            if not (s.gam_service_account_file and s.gam_groone_network_code):
+                raise GamNotConfigured(
+                    "defina GAM_SERVICE_ACCOUNT_FILE e GAM_GROONE_NETWORK_CODE neste worker"
+                )
+            self._gam = Gam(
+                client=RestGamClient.from_key_file(s.gam_service_account_file),
+                groone_network_code=s.gam_groone_network_code,
+            )
+        return self._gam
+
+    @contextmanager
+    def lock(self, key: str, *, timeout: int) -> Iterator[bool]:
+        """Trava no Redis (``True`` se conseguiu). Sem Redis, não trava: só no local."""
+        if self.redis is None:
+            yield True
+            return
+        lock = self.redis.lock(f"avant:lock:{key}", timeout=timeout, blocking=False)
+        if not lock.acquire():
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            # Passou do tempo da trava: outra execução já pode ter pegado; não é erro.
+            with suppress(redis.exceptions.LockError):
+                lock.release()
+
+
+def _mailer(settings: Settings) -> Mailer:
+    if settings.resend_api_key:
+        return ResendMailer(
+            api_key=settings.resend_api_key,
+            sender=settings.mail_from,
+            base_url=settings.app_base_url,
+        )
+    return LogMailer(base_url=settings.app_base_url, show_links=settings.avant_env == "local")
 
 
 _current: tuple[int, Services] | None = None

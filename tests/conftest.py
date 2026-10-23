@@ -2,24 +2,43 @@
 PostgreSQL real, com as migrations do avant-core.
 
 AVANT_TEST_MIGRATIONS_URL: papel avant_owner. AVANT_TEST_DATABASE_URL: papel avant_app.
-Sem as duas, os testes que precisam de banco são pulados.
+Sem as duas, os testes que precisam de banco são pulados. AVANT_TEST_REDIS_URL liga a trava
+por network (sem ele, o teste da trava é pulado). O GAM é sempre o de ``fake_gam.py``.
 """
 
 import os
 from collections.abc import Iterator
 
 import pytest
+import redis
 from alembic import command
 from alembic.config import Config
+from avant_core.gam.sync import Gam
 from avant_core.shared.clock import SystemClock
 from sqlalchemy import Engine, create_engine, text
 
 from avant_worker.app import app
 from avant_worker.services import Services, use_services
 from avant_worker.settings import Settings
+from tests.fake_gam import FakeGamClient
 
 APP_URL = os.environ.get("AVANT_TEST_DATABASE_URL")
 OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
+REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
+GROONE_NETWORK = "9999"
+TABLES = (
+    "ad_units",
+    "sites",
+    "network_sync_runs",
+    "networks",
+    "mcm_candidates",
+    "audit_logs",
+    "companies",
+    "sessions",
+    "password_resets",
+    "user_credentials",
+    "users",
+)
 
 
 @pytest.fixture(scope="session")
@@ -38,10 +57,13 @@ def engine() -> Iterator[Engine]:
 
 @pytest.fixture
 def services(engine: Engine) -> Iterator[Services]:
+    r = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
     s = Services(
         settings=Settings(database_url=APP_URL or "", avant_env="test"),
         engine=engine,
         clock=SystemClock(),
+        redis=r,
+        gam_override=Gam(FakeGamClient(), GROONE_NETWORK),
     )
     use_services(s)
     app.conf.task_always_eager = True
@@ -50,6 +72,10 @@ def services(engine: Engine) -> Iterator[Services]:
     use_services(None)
     owner = create_engine(OWNER_URL or "")
     with owner.begin() as conn:
-        for table in ("sessions", "password_resets", "user_credentials", "users"):
+        for table in TABLES:
             conn.execute(text(f"DELETE FROM {table}"))
     owner.dispose()
+    if r is not None:
+        for key in r.scan_iter("avant:lock:*"):
+            r.delete(key)
+        r.close()
