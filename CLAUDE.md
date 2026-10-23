@@ -12,3 +12,10 @@ Worker e agendador (Celery) do Groone Avant. Leia o README antes de mudar algo.
 - Antes de abrir PR: `uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest`.
 - Nada de segredos no repositório. Mensagens e comentários em português.
 - PRs vão para `develop`.
+
+## Contexto, issues e skills
+
+- Comece por `docs/contexto.md`: produto, decisões, estado dos cinco repositórios e onde está cada coisa. Decisões antigas em `docs/decisoes/`.
+- Todo trabalho parte de uma issue com milestone neste repositório (`gh issue list --milestone ...`). Pedido sem issue vira issue antes.
+- Skills em `docs/skills/` (índice em `docs/skills/README.md`); `.claude/skills` aponta para lá. Comece pela `avant-fluxo-de-trabalho`.
+- Grafo do código em `graphify-out/` (comece pelo `GRAPH_REPORT.md`, ou `graphify query "..."`). Mudou código: `graphify update .` e commite o grafo no mesmo PR.
