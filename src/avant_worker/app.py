@@ -21,17 +21,19 @@ QUEUES = ("default", "mail", "gam")
 
 
 def _route(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
+    """Escolhe a fila pelo nome da tarefa: avant.<fila>.<nome>; o resto vai para default."""
     parts = name.split(".")
     queue = parts[1] if len(parts) > 2 and parts[0] == "avant" else "default"
     return {"queue": queue if queue in QUEUES else "default"}
 
 
 def create_app(settings: BrokerSettings | None = None) -> Celery:
-    s = settings or BrokerSettings()
+    """Monta o Celery com as filas, a rota por nome e o agendamento do beat."""
+    broker_settings = settings or BrokerSettings()
     app = Celery("avant", include=["avant_worker.tasks.maintenance", "avant_worker.tasks.gam"])
     app.conf.update(
-        broker_url=s.celery_broker_url,
-        result_backend=s.redis_url,
+        broker_url=broker_settings.celery_broker_url,
+        result_backend=broker_settings.redis_url,
         result_expires=24 * 3600,
         task_serializer="json",
         result_serializer="json",
@@ -76,12 +78,14 @@ app = create_app()
 
 @signals.setup_logging.connect
 def _logging(**_: Any) -> None:
+    """Troca o log do Celery pelo log JSON."""
     # Sem este sinal, o Celery troca os handlers e os logs deixam de sair em JSON.
     configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
 
 
 @signals.task_failure.connect
 def _failure(sender: Any = None, exception: BaseException | None = None, **_: Any) -> None:
+    """Registra no log a tarefa que falhou, com o stack trace."""
     logging.getLogger("avant.worker").error(
         "tarefa falhou",
         exc_info=exception,

@@ -21,12 +21,13 @@ git fetch origin develop:refs/remotes/origin/develop
 git checkout -B feat/<assunto> origin/develop    # ou fix/<assunto>
 ```
 
-Siga as skills do tipo de mudança deste repositório (veja `docs/skills/README.md`) e as do superpowers: `test-driven-development` para código, `systematic-debugging` para bug, `verification-before-completion` antes de dizer que terminou.
+Todo código segue a `avant-clean-code` (obrigatória). Siga também as skills do tipo de mudança deste repositório (veja `docs/skills/README.md`) e as do superpowers: `test-driven-development` para código, `systematic-debugging` para bug, `verification-before-completion` antes de dizer que terminou.
 
 ## 3. Checar
 
 ```bash
 uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest
+uv run python scripts/clean_code.py
 ```
 
 Sem Postgres local, os testes de integração pulam e rodam no CI: confira o CI do PR antes do merge.

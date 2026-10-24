@@ -33,6 +33,7 @@ class Settings(BrokerSettings):
 
     @model_validator(mode="after")
     def _deployed_envs(self) -> "Settings":
+        """Exige as variáveis obrigatórias em staging e produção."""
         if self.avant_env in ("staging", "production"):
             missing = [
                 name
