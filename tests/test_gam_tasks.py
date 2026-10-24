@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -28,6 +29,7 @@ from avant_worker.tasks.gam import (
     discover_mcm,
     schedule_imports,
     schedule_tests,
+    sync_contracts,
     sync_network,
 )
 from tests.conftest import GROONE_NETWORK
@@ -92,6 +94,7 @@ def test_gam_tasks_are_registered_on_the_gam_queue() -> None:
         "avant.gam.sync_network",
         "avant.gam.check_access",
         "avant.gam.discover_mcm",
+        "avant.gam.sync_contracts",
         "avant.gam.schedule_tests",
         "avant.gam.schedule_imports",
     ):
@@ -206,6 +209,42 @@ def test_discover_mcm_creates_network_and_imports(services: Services) -> None:
         assert [s.domain for s in uow.sites.list_for_network(n.id)] == ["acai.com.br"]
         assert len(uow.ad_units.list_for_network(n.id)) == 1
     assert count(services, "mcm_candidates") == 1
+
+
+def test_sync_contracts_replaces_the_contract_when_the_revshare_changes(
+    services: Services,
+) -> None:
+    owner = company(services)
+    account = Network(
+        company_id=owner.id,
+        network_code="456",
+        connection_type=ConnectionType.MCM,
+        delegation=Delegation.MANAGE_ACCOUNT,
+        created_at=services.clock.now(),
+    )
+    with services.uow(owner.id) as uow:
+        uow.networks.add(account)
+        uow.commit()
+    client = fake(services)
+    client.children = [
+        GamChildPublisher(
+            "456", None, "dono@acai.com.br", Delegation.MANAGE_ACCOUNT, "APPROVED", Decimal("15")
+        ),
+        GamChildPublisher("789", None, "x@y.com", Delegation.MANAGE_ACCOUNT, "APPROVED", None),
+    ]
+
+    assert sync_contracts.delay().get() == {"started": 1, "unchanged": 0, "skipped": 1}
+    assert sync_contracts.delay().get() == {"started": 0, "unchanged": 1, "skipped": 1}
+    client.children[0] = GamChildPublisher(
+        "456", None, "dono@acai.com.br", Delegation.MANAGE_ACCOUNT, "APPROVED", Decimal("20")
+    )
+    assert sync_contracts.delay().get()["started"] == 1
+    with services.uow(owner.id) as uow:
+        history = uow.contracts.search(network_id=account.id, limit=10)
+        assert sorted((item.revshare, item.is_active) for item in history) == [
+            (Decimal("15.000"), False),
+            (Decimal("20.000"), True),
+        ]
 
 
 def test_lock_skips_a_second_run(services: Services) -> None:

@@ -15,10 +15,11 @@ Erros saem já classificados para o avant-core:
 import logging
 import time
 from collections.abc import Iterator, Mapping
+from decimal import Decimal
 from typing import Any
 
 import httpx
-from avant_core.gam.domain import Delegation, InventoryStatus
+from avant_core.gam.domain import Delegation, InventoryStatus, revshare_from_millipercent
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,
@@ -29,6 +30,7 @@ from avant_core.ports import (
     GamSite,
     GamUnavailable,
 )
+from avant_core.shared.errors import InvalidInput
 from google.auth import exceptions as auth_exceptions
 from google.auth.credentials import Credentials
 from google.auth.transport import Request as AuthRequest
@@ -99,6 +101,7 @@ class RestGamClient:
                 email=str(item.get("email") or ""),
                 delegation=_delegation(item.get("delegationType")),
                 account_status=str(item.get("accountStatus") or "UNSPECIFIED"),
+                revshare=_revshare(item.get("approvedManageAccountRevenueShareMillipercent")),
             )
 
     def list_sites(self, network_code: str) -> Iterator[GamSite]:
@@ -200,6 +203,18 @@ def _message(response: httpx.Response) -> str | None:
 def _last(resource_name: object) -> str:
     """``networks/123/adUnits/456`` → ``456``."""
     return str(resource_name or "").rsplit("/", 1)[-1]
+
+
+def _revshare(millipercent: object) -> Decimal | None:
+    """O revshare aprovado vem em milipercent (int64 como texto no JSON); fora de 0 a 100%
+    ou ilegível, fica vazio e o contrato não muda."""
+    if millipercent is None or millipercent == "":
+        return None
+    try:
+        return revshare_from_millipercent(int(str(millipercent)))
+    except (ValueError, InvalidInput):
+        log.warning("revshare inválido no MCM", extra={"value": str(millipercent)})
+        return None
 
 
 def _delegation(value: object) -> Delegation | None:
