@@ -33,6 +33,10 @@ class Settings(BrokerSettings):
     # Versão da API SOAP dos relatórios (ex.: v202608); vazio usa a mais nova do googleads.
     gam_soap_version: str | None = None
 
+    # Visitas: o Mongo do iGroone/data (só leitura). Sem URL, a tarefa das visitas não roda.
+    page_views_mongo_url: str | None = None
+    page_views_mongo_database: str = "admanager"
+
     @model_validator(mode="after")
     def _deployed_envs(self) -> "Settings":
         """Exige as variáveis obrigatórias em staging e produção."""

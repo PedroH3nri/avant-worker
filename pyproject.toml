@@ -11,12 +11,13 @@ dependencies = [
     "googleads>=50",
     "httpx>=0.27",
     "pydantic-settings>=2.6",
+    "pymongo>=4.10",
     "redis>=5.2",
 ]
 
 [tool.uv.sources]
 # Sempre por tag: atualizar o avant-core é uma mudança explícita neste repositório.
-avant-core = { git = "https://github.com/PedroH3nri/avant-core", tag = "v0.15.0" }
+avant-core = { git = "https://github.com/PedroH3nri/avant-core", tag = "v0.17.0" }
 
 [dependency-groups]
 dev = [

@@ -36,6 +36,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.maintenance",
             "avant_worker.tasks.gam",
             "avant_worker.tasks.metrics",
+            "avant_worker.tasks.page_views",
         ],
     )
     app.conf.update(
@@ -74,6 +75,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "gam-check-access": {
                 "task": "avant.gam.schedule_tests",
                 "schedule": crontab(hour=3, minute=0),
+            },
+            "page-views-sync": {
+                "task": "avant.default.schedule_page_views",
+                "schedule": crontab(minute=20),
             },
             "gam-sync-metrics": {
                 "task": "avant.gam.schedule_metrics",
