@@ -17,13 +17,14 @@ from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.sync import Gam
 from avant_core.mail import LogMailer, ResendMailer
-from avant_core.metrics.domain import GamReportRow
+from avant_core.metrics.domain import GamReportRow, PageViewCount
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
 
 from avant_worker.gam_client import RestGamClient
 from avant_worker.gam_reports import ReportKind, SoapReportClient
+from avant_worker.page_views import MongoPageViews
 from avant_worker.settings import Settings
 
 
@@ -34,6 +35,14 @@ class ReportSource(Protocol):
         self, network_code: str, kind: ReportKind, start: date, end: date
     ) -> Iterable[GamReportRow]:
         """Linhas do relatório da network no período."""
+        ...
+
+
+class PageViewSource(Protocol):
+    """O que a tarefa das visitas pede ao data: as contagens de uma network."""
+
+    def counts(self, network_code: str, start: date, end: date) -> list[PageViewCount]:
+        """Visitas por domínio, hora e país da network no período."""
         ...
 
 
@@ -51,12 +60,14 @@ class Services:
     # Montado na primeira tarefa do GAM (ou entregue pronto nos testes).
     gam_override: Gam | None = None
     reports_override: "ReportSource | None" = None
+    page_views_override: "PageViewSource | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
         map_entities()
         self._gam: Gam | None = self.gam_override
         self._reports: ReportSource | None = self.reports_override
+        self._page_views: PageViewSource | None = self.page_views_override
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -104,6 +115,15 @@ class Services:
                 raise GamNotConfigured("defina GAM_SERVICE_ACCOUNT_FILE neste worker")
             self._reports = SoapReportClient(key_file, version=self.settings.gam_soap_version)
         return self._reports
+
+    @property
+    def page_views(self) -> "PageViewSource | None":
+        """Visitas do data (Mongo, só leitura); ``None`` quando o worker não tem a URL."""
+        if self._page_views is None and self.settings.page_views_mongo_url:
+            self._page_views = MongoPageViews(
+                self.settings.page_views_mongo_url, self.settings.page_views_mongo_database
+            )
+        return self._page_views
 
     @contextmanager
     def lock(self, key: str, *, timeout: int) -> Iterator[bool]:

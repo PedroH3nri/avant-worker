@@ -20,13 +20,14 @@ from sqlalchemy import Engine, create_engine, text
 from avant_worker.app import app
 from avant_worker.services import Services, use_services
 from avant_worker.settings import Settings
-from tests.fake_gam import FakeGamClient, FakeReports
+from tests.fake_gam import FakeGamClient, FakePageViews, FakeReports
 
 APP_URL = os.environ.get("AVANT_TEST_DATABASE_URL")
 OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "metrics.page_views_hourly",
     "metrics.gam_daily",
     "metrics.gam_key_value_daily",
     "ad_units",
@@ -67,6 +68,7 @@ def services(engine: Engine) -> Iterator[Services]:
         redis=r,
         gam_override=Gam(FakeGamClient(), GROONE_NETWORK),
         reports_override=FakeReports(),
+        page_views_override=FakePageViews(),
     )
     use_services(s)
     app.conf.task_always_eager = True

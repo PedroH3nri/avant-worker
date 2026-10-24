@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import date
 
-from avant_core.metrics.domain import GamReportRow
+from avant_core.metrics.domain import GamReportRow, PageViewCount
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,
@@ -71,3 +71,19 @@ class FakeReports:
         if self.fail_next:
             raise self.fail_next.pop(0)
         return [row for row in self.rows.get((network_code, kind), []) if start <= row.date <= end]
+
+
+@dataclass
+class FakePageViews:
+    """Visitas prontas por network; guarda os períodos pedidos."""
+
+    counts_by_network: dict[str, list[PageViewCount]] = field(default_factory=dict)
+    calls: list[tuple[str, date, date]] = field(default_factory=list)
+
+    def counts(self, network_code: str, start: date, end: date) -> list[PageViewCount]:
+        self.calls.append((network_code, start, end))
+        return [
+            item
+            for item in self.counts_by_network.get(network_code, [])
+            if start <= item.date <= end
+        ]
