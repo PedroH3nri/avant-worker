@@ -1,6 +1,6 @@
 [project]
 name = "avant-worker"
-version = "0.2.0"
+version = "0.3.0"
 description = "Worker e agendador (Celery) do Groone Avant."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -8,6 +8,7 @@ dependencies = [
     "avant-core",
     "celery[redis]>=5.4,<6",
     "google-auth>=2.35",
+    "googleads>=50",
     "httpx>=0.27",
     "pydantic-settings>=2.6",
     "redis>=5.2",
@@ -15,7 +16,7 @@ dependencies = [
 
 [tool.uv.sources]
 # Sempre por tag: atualizar o avant-core é uma mudança explícita neste repositório.
-avant-core = { git = "https://github.com/PedroH3nri/avant-core", tag = "v0.12.0" }
+avant-core = { git = "https://github.com/PedroH3nri/avant-core", tag = "v0.13.0" }
 
 [dependency-groups]
 dev = [
@@ -52,3 +53,8 @@ python_version = "3.12"
 strict = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# O googleads não tem tipos; o uso fica restrito a gam_reports.py.
+module = ["googleads", "googleads.*"]
+ignore_missing_imports = true

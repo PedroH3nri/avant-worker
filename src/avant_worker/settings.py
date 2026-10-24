@@ -30,6 +30,8 @@ class Settings(BrokerSettings):
     # Google Ad Manager: só os workers da fila gam têm a chave da conta de serviço.
     gam_service_account_file: str | None = None
     gam_groone_network_code: str | None = None
+    # Versão da API SOAP dos relatórios (ex.: v202608); vazio usa a mais nova do googleads.
+    gam_soap_version: str | None = None
 
     @model_validator(mode="after")
     def _deployed_envs(self) -> "Settings":

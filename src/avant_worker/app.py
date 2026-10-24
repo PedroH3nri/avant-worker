@@ -30,7 +30,14 @@ def _route(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
 def create_app(settings: BrokerSettings | None = None) -> Celery:
     """Monta o Celery com as filas, a rota por nome e o agendamento do beat."""
     broker_settings = settings or BrokerSettings()
-    app = Celery("avant", include=["avant_worker.tasks.maintenance", "avant_worker.tasks.gam"])
+    app = Celery(
+        "avant",
+        include=[
+            "avant_worker.tasks.maintenance",
+            "avant_worker.tasks.gam",
+            "avant_worker.tasks.metrics",
+        ],
+    )
     app.conf.update(
         broker_url=broker_settings.celery_broker_url,
         result_backend=broker_settings.redis_url,
@@ -63,6 +70,14 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "gam-check-access": {
                 "task": "avant.gam.schedule_tests",
                 "schedule": crontab(hour=3, minute=0),
+            },
+            "gam-sync-metrics": {
+                "task": "avant.gam.schedule_metrics",
+                "schedule": crontab(minute=35),
+            },
+            "gam-reprocess-metrics": {
+                "task": "avant.gam.schedule_reprocess",
+                "schedule": crontab(hour=4, minute=40),
             },
             "gam-import-inventory": {
                 "task": "avant.gam.schedule_imports",

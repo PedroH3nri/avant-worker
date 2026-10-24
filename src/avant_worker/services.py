@@ -6,21 +6,35 @@ na primeira tarefa, nunca herda o do pai.
 
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
+from datetime import date
+from typing import Protocol
 
 import redis
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.sync import Gam
 from avant_core.mail import LogMailer, ResendMailer
+from avant_core.metrics.domain import GamReportRow
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
 
 from avant_worker.gam_client import RestGamClient
+from avant_worker.gam_reports import ReportKind, SoapReportClient
 from avant_worker.settings import Settings
+
+
+class ReportSource(Protocol):
+    """O que as tarefas de métricas pedem ao GAM: as linhas de um relatório."""
+
+    def report(
+        self, network_code: str, kind: ReportKind, start: date, end: date
+    ) -> Iterable[GamReportRow]:
+        """Linhas do relatório da network no período."""
+        ...
 
 
 class GamNotConfigured(RuntimeError):
@@ -36,11 +50,13 @@ class Services:
     redis: "redis.Redis | None" = None
     # Montado na primeira tarefa do GAM (ou entregue pronto nos testes).
     gam_override: Gam | None = None
+    reports_override: "ReportSource | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
         map_entities()
         self._gam: Gam | None = self.gam_override
+        self._reports: ReportSource | None = self.reports_override
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -78,6 +94,16 @@ class Services:
                 groone_network_code=settings.gam_groone_network_code,
             )
         return self._gam
+
+    @property
+    def reports(self) -> "ReportSource":
+        """Relatórios de métricas do GAM (SOAP, só leitura); só a fila gam tem a chave."""
+        if self._reports is None:
+            key_file = self.settings.gam_service_account_file
+            if not key_file:
+                raise GamNotConfigured("defina GAM_SERVICE_ACCOUNT_FILE neste worker")
+            self._reports = SoapReportClient(key_file, version=self.settings.gam_soap_version)
+        return self._reports
 
     @contextmanager
     def lock(self, key: str, *, timeout: int) -> Iterator[bool]:
