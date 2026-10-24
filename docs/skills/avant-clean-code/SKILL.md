@@ -37,5 +37,6 @@ reescrito no padrão em 2026-10-24, e o CI reprova o PR que deixar qualquer arqu
 - Painel (web): `pnpm clean-code` (`scripts/clean-code.mjs`), para todo o `src/`.
 - Infra: não tem CI; confira à mão os scripts de `scripts/` antes do merge.
 
-Testes (`tests/`) e migrations geradas ficam fora da checagem automática, mas seguem as regras
-de nome e de comentário ao lado quando forem escritos ou mudados.
+Código gerado (migrations do Alembic, `src/components/ui` do shadcn-vue) e testes ficam fora da
+checagem automática, mas seguem as regras de nome e de comentário ao lado quando forem escritos
+ou mudados.
