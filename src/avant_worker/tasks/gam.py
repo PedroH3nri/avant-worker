@@ -6,11 +6,13 @@
 - ``check_access``: só o teste de acesso, todo dia.
 - ``discover_mcm``: de hora em hora, lê os child publishers da network da Groone. Para
   cada network nova, também pede o histórico das métricas (``backfill_metrics``).
+- ``sync_contracts``: de hora em hora, depois da descoberta, lê o revshare aprovado de cada
+  child publisher Manage Account e troca o contrato da network quando ele muda.
 - ``schedule_*``: o agendador chama e elas espalham uma tarefa por network ativa.
 
 Cada network roda com o Unit of Work da própria Empresa (RLS) e uma trava no Redis, para
 o agendador e o "sincronizar agora" não importarem a mesma network ao mesmo tempo. Só a
-descoberta e os ``schedule_*`` usam ``trusted_uow``: percorrem todas as Empresas.
+descoberta, os contratos e os ``schedule_*`` usam ``trusted_uow``: percorrem todas as Empresas.
 
 Erro temporário do GAM (``GamUnavailable``) volta para a fila em 1, 2, 4 e 8 minutos.
 Tudo aqui é idempotente: a importação é upsert pelo id do GAM.
@@ -20,7 +22,7 @@ import logging
 import uuid
 from typing import Any
 
-from avant_core.gam import sync
+from avant_core.gam import contracts, sync
 from avant_core.ports import GamError, GamUnavailable
 from celery import Task
 
@@ -161,6 +163,28 @@ def discover_mcm() -> dict[str, int]:
         "updated": found.updated,
     }
     log.info("descoberta do MCM", extra=counts)
+    return counts
+
+
+@app.task(
+    name="avant.gam.sync_contracts",
+    autoretry_for=RETRY_FOR,
+    retry_backoff=60,
+    retry_backoff_max=8 * 60,
+    retry_jitter=False,
+    max_retries=4,
+)
+def sync_contracts() -> dict[str, int]:
+    """trusted_uow: o revshare de todas as networks Manage Account vem de uma chamada só."""
+    services = get_services()
+    with services.lock("gam:sync_contracts", timeout=LOCK_SECONDS) as locked:
+        if not locked:
+            return {"skipped_run": 1}
+        result = contracts.sync_contracts(
+            services.trusted_uow(), gam=services.gam, clock=services.clock
+        )
+    counts = {"started": result.started, "unchanged": result.unchanged, "skipped": result.skipped}
+    log.info("contratos do MCM", extra=counts)
     return counts
 
 

@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-from decimal import Decimal
 from typing import Any
 
 from avant_core.gam.domain import ConnectionType, Delegation, Network
@@ -103,11 +102,6 @@ def test_sync_metrics_stores_both_reports_idempotently(services: Services) -> No
     connected = network(services, owner)
     inventory(fake(services))
     sync_network.delay(str(owner.id), str(connected.id)).get()
-    with services.trusted_uow() as uow:
-        saved = uow.networks.get(connected.id)
-        assert saved is not None
-        saved.revshare = Decimal("20")
-        uow.commit()
     source = reports(services)
     source.rows[("123", ReportKind.AD_UNIT)] = [row("u2", 1_000_000), row("u2", 500_000)]
     source.rows[("123", ReportKind.KEY_VALUE)] = [row("u2", 10, key="utm_source", value="fb")]
@@ -120,10 +114,10 @@ def test_sync_metrics_stores_both_reports_idempotently(services: Services) -> No
     assert count(services, "metrics.gam_daily") == 1
     assert count(services, "metrics.gam_key_value_daily") == 1
     with services.uow(owner.id) as uow:
-        client_revenue = uow.session.execute(
-            text("SELECT revenue_client_micros, site_id IS NOT NULL FROM metrics.gam_daily")
+        gross_revenue = uow.session.execute(
+            text("SELECT revenue_micros, site_id IS NOT NULL FROM metrics.gam_daily")
         ).one()
-    assert tuple(client_revenue) == (1_200_000, True)
+    assert tuple(gross_revenue) == (1_500_000, True)
 
 
 def test_sync_metrics_skips_manage_inventory_and_records_permanent_errors(

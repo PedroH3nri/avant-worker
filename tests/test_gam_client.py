@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -137,13 +138,34 @@ def test_child_publishers() -> None:
                 "delegationType": "MANAGE_INVENTORY",
                 "accountStatus": "APPROVED",
             },
+            {
+                "name": "networks/9/childPublishers/9",
+                "childNetwork": "networks/456",
+                "email": "dono@outro.com",
+                "delegationType": "MANAGE_ACCOUNT",
+                "accountStatus": "APPROVED",
+                "approvedManageAccountRevenueShareMillipercent": "15500",
+                "parentRevenueShareMillipercent": "20000",
+            },
+            {
+                "name": "networks/9/childPublishers/10",
+                "childNetwork": "networks/789",
+                "email": "dono@errado.com",
+                "delegationType": "MANAGE_ACCOUNT",
+                "accountStatus": "APPROVED",
+                "approvedManageAccountRevenueShareMillipercent": "150000",
+            },
             {"name": "networks/9/childPublishers/8", "email": "x@y.com"},  # sem network ainda
         ]
     }
     gam, _ = client(lambda r: ok(body))
-    (child,) = gam.list_child_publishers("9")
-    assert child.network_code == "123" and child.delegation is Delegation.MANAGE_INVENTORY
-    assert child.account_status == "APPROVED" and child.email == "dono@acai.com.br"
+    inventory, account, invalid = gam.list_child_publishers("9")
+    assert inventory.network_code == "123" and inventory.delegation is Delegation.MANAGE_INVENTORY
+    assert inventory.account_status == "APPROVED" and inventory.email == "dono@acai.com.br"
+    assert inventory.revshare is None
+    assert account.delegation is Delegation.MANAGE_ACCOUNT
+    assert account.revshare == Decimal("15.5")
+    assert invalid.network_code == "789" and invalid.revshare is None
 
 
 @pytest.mark.parametrize(

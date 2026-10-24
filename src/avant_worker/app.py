@@ -67,6 +67,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "task": "avant.gam.discover_mcm",
                 "schedule": crontab(minute=5),
             },
+            "gam-sync-contracts": {
+                "task": "avant.gam.sync_contracts",
+                "schedule": crontab(minute=10),
+            },
             "gam-check-access": {
                 "task": "avant.gam.schedule_tests",
                 "schedule": crontab(hour=3, minute=0),
