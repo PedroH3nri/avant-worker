@@ -18,6 +18,7 @@ NETWORK_UPDATED = "network.updated"
 
 
 def channel(company_id: uuid.UUID) -> str:
+    """Nome do canal do Redis com os eventos de uma Empresa."""
     return f"avant:events:{company_id}"
 
 

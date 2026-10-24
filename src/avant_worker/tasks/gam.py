@@ -45,8 +45,9 @@ RETRY_FOR = (GamUnavailable,)
     max_retries=4,
 )
 def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[str, Any]:
+    """Testa a network e importa sites e ad units, avisando o painel a cada etapa."""
     services = get_services()
-    cid, nid = uuid.UUID(company_id), uuid.UUID(network_id)
+    company_uuid, network_uuid = uuid.UUID(company_id), uuid.UUID(network_id)
     with services.lock(f"gam:network:{network_id}", timeout=LOCK_SECONDS) as locked:
         if not locked:
             log.info("network já em sincronização", extra={"network_id": network_id})
@@ -56,9 +57,13 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
         try:
             if test:
                 check = sync.check_network(
-                    services.uow(cid), network_id=nid, gam=gam, clock=clock, mailer=mailer
+                    services.uow(company_uuid),
+                    network_id=network_uuid,
+                    gam=gam,
+                    clock=clock,
+                    mailer=mailer,
                 )
-                _updated(services, cid, nid)
+                _updated(services, company_uuid, network_uuid)
                 result["test"] = {"ok": check.ok, "status": check.status.value}
                 if not check.ok:
                     log.info(
@@ -67,17 +72,27 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                     )
                     return result
             result["sites"] = sync.import_sites(
-                services.uow(cid), network_id=nid, gam=gam, clock=clock, mailer=mailer
+                services.uow(company_uuid),
+                network_id=network_uuid,
+                gam=gam,
+                clock=clock,
+                mailer=mailer,
             )
-            _updated(services, cid, nid)
+            _updated(services, company_uuid, network_uuid)
             result["ad_units"] = sync.import_ad_units(
-                services.uow(cid), network_id=nid, gam=gam, clock=clock, mailer=mailer
+                services.uow(company_uuid),
+                network_id=network_uuid,
+                gam=gam,
+                clock=clock,
+                mailer=mailer,
             )
-            _updated(services, cid, nid)
+            _updated(services, company_uuid, network_uuid)
         except GamError as exc:
-            _updated(services, cid, nid)  # a etapa ficou registrada como falha
+            # A etapa ficou registrada como falha.
+            _updated(services, company_uuid, network_uuid)
             if not exc.permanent:
-                raise  # volta para a fila (autoretry)
+                # Volta para a fila (autoretry).
+                raise
             # Já ficou registrado na network e na NetworkSyncRun; não adianta tentar de novo.
             log.warning(
                 "importação da network falhou",
@@ -98,21 +113,22 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
     max_retries=4,
 )
 def check_access(company_id: str, network_id: str) -> dict[str, Any]:
+    """Só testa se a conta de serviço ainda lê a network."""
     services = get_services()
     with services.lock(f"gam:network:{network_id}", timeout=LOCK_SECONDS) as locked:
         if not locked:
             return {"skipped": "locked"}
-        cid, nid = uuid.UUID(company_id), uuid.UUID(network_id)
+        company_uuid, network_uuid = uuid.UUID(company_id), uuid.UUID(network_id)
         try:
             check = sync.check_network(
-                services.uow(cid),
-                network_id=nid,
+                services.uow(company_uuid),
+                network_id=network_uuid,
                 gam=services.gam,
                 clock=services.clock,
                 mailer=services.mailer,
             )
         finally:
-            _updated(services, cid, nid)
+            _updated(services, company_uuid, network_uuid)
     return {"ok": check.ok, "status": check.status.value, "error": check.error}
 
 
@@ -158,6 +174,7 @@ def schedule_imports() -> int:
 
 
 def _fan_out(task: "Task[Any, Any]", kwargs: dict[str, Any]) -> int:
+    """Agenda a tarefa para cada network ativa e devolve quantas."""
     networks = sync.active_networks(get_services().trusted_uow())
     for company_id, network_id in networks:
         task.delay(str(company_id), str(network_id), **kwargs)
@@ -165,6 +182,7 @@ def _fan_out(task: "Task[Any, Any]", kwargs: dict[str, Any]) -> int:
 
 
 def _updated(services: Services, company_id: uuid.UUID, network_id: uuid.UUID) -> None:
+    """Avisa o painel, pelo Redis, que a network mudou."""
     publish(services.redis, company_id, NETWORK_UPDATED, {"network_id": str(network_id)})
 
 
@@ -173,7 +191,7 @@ def _flat(result: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for step, value in result.items():
         if isinstance(value, dict):
-            out.update({f"{step}_{k}": v for k, v in value.items()})
+            out.update({f"{step}_{key}": value for key, value in value.items()})
         else:
             out[step] = value
     return out

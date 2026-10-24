@@ -9,7 +9,10 @@ Worker e agendador (Celery) do Groone Avant. Leia o README antes de mudar algo.
   limpeza e para varrer todas as Empresas, sempre documentado na tarefa.
 - O GAM é só leitura: `gam_client.py` não ganha método que escreve sem revisão do Pedro.
 - Tarefas idempotentes: `acks_late` está ligado e uma tarefa pode rodar duas vezes.
-- Antes de abrir PR: `uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest`.
+- Clean code obrigatório (skill `avant-clean-code`): nomes claros, nada de nome de uma letra,
+  toda função com docstring de 1 ou 2 linhas sobre o que faz, nada de comentário ao lado do
+  código. Conferido por `scripts/clean_code.py` no CI.
+- Antes de abrir PR: `uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest && uv run python scripts/clean_code.py`.
 - Nada de segredos no repositório. Mensagens e comentários em português.
 - PRs vão para `develop`.
 

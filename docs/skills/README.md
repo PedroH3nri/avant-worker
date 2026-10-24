@@ -4,6 +4,7 @@ Todas as skills que o trabalho em `avant-worker` usa ficam aqui, versionadas com
 
 | Skill | Quando usar | Origem |
 | --- | --- | --- |
+| `avant-clean-code` | Sempre que escrever código: nomes claros, comentário de 1 ou 2 linhas por função, nada de comentário ao lado. Obrigatório, conferido no CI. | Avant |
 | `avant-fluxo-de-trabalho` | Começo de qualquer tarefa: issue, branch, checagens, PR, merge e fechar a issue. | Avant |
 | `avant-nova-tarefa` | Tarefa Celery nova ou alterada no avant-worker. | Avant |
 | `using-superpowers` | Carregada no começo de cada sessão pelo hook. Ensina a procurar e usar as skills antes de agir. | superpowers 7.0.1 |

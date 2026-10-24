@@ -44,6 +44,7 @@ class Services:
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
+        """Monta banco, Redis e email a partir das configurações."""
         engine = create_engine(
             settings.database_url, pool_size=settings.db_pool_size, pool_pre_ping=True
         )
@@ -65,15 +66,16 @@ class Services:
 
     @property
     def gam(self) -> Gam:
+        """Monta o cliente do GAM na primeira vez que é usado; só a fila gam tem a chave."""
         if self._gam is None:
-            s = self.settings
-            if not (s.gam_service_account_file and s.gam_groone_network_code):
+            settings = self.settings
+            if not (settings.gam_service_account_file and settings.gam_groone_network_code):
                 raise GamNotConfigured(
                     "defina GAM_SERVICE_ACCOUNT_FILE e GAM_GROONE_NETWORK_CODE neste worker"
                 )
             self._gam = Gam(
-                client=RestGamClient.from_key_file(s.gam_service_account_file),
-                groone_network_code=s.gam_groone_network_code,
+                client=RestGamClient.from_key_file(settings.gam_service_account_file),
+                groone_network_code=settings.gam_groone_network_code,
             )
         return self._gam
 
@@ -96,6 +98,7 @@ class Services:
 
 
 def _mailer(settings: Settings) -> Mailer:
+    """Usa o Resend quando há chave; senão só registra os emails no log."""
     if settings.resend_api_key:
         return ResendMailer(
             api_key=settings.resend_api_key,
@@ -109,6 +112,7 @@ _current: tuple[int, Services] | None = None
 
 
 def get_services() -> Services:
+    """Devolve os serviços do processo, montando de novo depois de um fork."""
     global _current
     if _current is None or _current[0] != os.getpid():
         _current = (os.getpid(), Services.build(Settings()))

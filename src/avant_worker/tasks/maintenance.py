@@ -15,6 +15,7 @@ log = logging.getLogger("avant.worker.maintenance")
 
 @app.task(name="avant.default.purge_expired")
 def purge_expired() -> dict[str, int]:
+    """Apaga sessões e links de nova senha vencidos e registra quantos."""
     services = get_services()
     result = purge(services.trusted_uow(), clock=services.clock)
     counts = {"sessions": result.sessions, "password_resets": result.password_resets}
