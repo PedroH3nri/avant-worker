@@ -1,7 +1,9 @@
 """Um GAM em memória para as tarefas (o do avant-core fica nos testes dele)."""
 
 from dataclasses import dataclass, field
+from datetime import date
 
+from avant_core.metrics.domain import GamReportRow
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,
@@ -10,6 +12,8 @@ from avant_core.ports import (
     GamNetworkInfo,
     GamSite,
 )
+
+from avant_worker.gam_reports import ReportKind
 
 
 @dataclass
@@ -50,3 +54,20 @@ class FakeGamClient:
     def list_ad_units(self, network_code: str) -> list[GamAdUnit]:
         self._call("list_ad_units", network_code)
         return list(self.ad_units.get(network_code, []))
+
+
+@dataclass
+class FakeReports:
+    """Relatórios prontos por (network, tipo); guarda os períodos pedidos."""
+
+    rows: dict[tuple[str, ReportKind], list[GamReportRow]] = field(default_factory=dict)
+    fail_next: list[GamError] = field(default_factory=list)
+    calls: list[tuple[str, ReportKind, date, date]] = field(default_factory=list)
+
+    def report(
+        self, network_code: str, kind: ReportKind, start: date, end: date
+    ) -> list[GamReportRow]:
+        self.calls.append((network_code, kind, start, end))
+        if self.fail_next:
+            raise self.fail_next.pop(0)
+        return [row for row in self.rows.get((network_code, kind), []) if start <= row.date <= end]

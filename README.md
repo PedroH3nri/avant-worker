@@ -29,6 +29,13 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem |
 | `avant.gam.schedule_tests` | todo dia às 03:00 UTC | uma `avant.gam.check_access` por network ativa |
 | `avant.gam.schedule_imports` | de 6 em 6 horas (minuto 20) | uma `avant.gam.sync_network(test=False)` por network ativa |
+| `avant.gam.sync_metrics(company_id, network_id, start, end)` | pelos agendadores abaixo | relatórios por ad unit e por key-value do período (SOAP, só leitura), gravados com upsert em `metrics.*`; avisa o painel com `metrics.updated` |
+| `avant.gam.schedule_metrics` | de hora em hora (minuto 35) | ontem e hoje de cada network ativa |
+| `avant.gam.schedule_reprocess` | todo dia às 04:40 UTC | os três dias antes de ontem (o GAM ajusta os números) |
+| `avant.gam.backfill_metrics(company_id, network_id, days=90)` | quando a descoberta do MCM cria uma network | o histórico em lotes de 7 dias |
+
+As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
+entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.
 
 A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar este pacote.
 
@@ -61,6 +68,7 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | `APP_BASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` | avisos por e-mail (`RESEND_API_KEY` obrigatório em staging e produção) |
 | `GAM_SERVICE_ACCOUNT_FILE` | caminho do JSON da chave da conta de serviço; só no worker-gam |
 | `GAM_GROONE_NETWORK_CODE` | network da Groone (MCM) |
+| `GAM_SOAP_VERSION` | opcional: versão da API SOAP dos relatórios (ex.: `v202608`); vazio usa a mais nova do `googleads` |
 | `LOG_LEVEL` | padrão `INFO` |
 
 Os nomes estão no `.env.example` do avant-infra; os valores, só nas VMs.

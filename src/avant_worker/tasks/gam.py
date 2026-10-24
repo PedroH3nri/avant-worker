@@ -4,7 +4,8 @@
   enfileira ao conectar e no "sincronizar agora"; a descoberta do MCM, para cada network
   nova. Com ``test=False`` (agendador de 6 em 6 horas), só importa.
 - ``check_access``: só o teste de acesso, todo dia.
-- ``discover_mcm``: de hora em hora, lê os child publishers da network da Groone.
+- ``discover_mcm``: de hora em hora, lê os child publishers da network da Groone. Para
+  cada network nova, também pede o histórico das métricas (``backfill_metrics``).
 - ``schedule_*``: o agendador chama e elas espalham uma tarefa por network ativa.
 
 Cada network roda com o Unit of Work da própria Empresa (RLS) e uma trava no Redis, para
@@ -26,6 +27,7 @@ from celery import Task
 from avant_worker.app import app
 from avant_worker.events import NETWORK_UPDATED, publish
 from avant_worker.services import Services, get_services
+from avant_worker.tasks.metrics import backfill_metrics
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -151,6 +153,7 @@ def discover_mcm() -> dict[str, int]:
         )
     for company_id, network_id in found.created:
         sync_network.delay(str(company_id), str(network_id))
+        backfill_metrics.delay(str(company_id), str(network_id))
     counts = {
         "created": len(found.created),
         "candidates": found.candidates,
