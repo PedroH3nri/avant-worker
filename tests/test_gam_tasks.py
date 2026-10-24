@@ -109,7 +109,7 @@ def test_sync_network_tests_then_imports(services: Services) -> None:
 
     result = sync_network.delay(str(c.id), str(n.id)).get()
     assert result["test"] == {"ok": True, "status": "connected"}
-    assert result["sites"] == {"created": 1, "updated": 0, "archived": 0}
+    assert result["sites"] == {"created": 1, "updated": 0, "archived": 0, "matched": 0}
     assert result["ad_units"]["created"] == 2 and result["ad_units"]["without_site"] == 0
     with services.uow(c.id) as uow:
         (site,) = uow.sites.list_for_network(n.id)
