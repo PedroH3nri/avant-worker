@@ -37,6 +37,9 @@ class Settings(BrokerSettings):
     page_views_mongo_url: str | None = None
     page_views_mongo_database: str = "admanager"
 
+    # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
+    openexchangerates_app_id: str | None = None
+
     @model_validator(mode="after")
     def _deployed_envs(self) -> "Settings":
         """Exige as variáveis obrigatórias em staging e produção."""
