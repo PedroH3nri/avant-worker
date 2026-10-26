@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from avant_core.company.domain import Company, CompanyPlan
+from avant_core.company.domain import Company
 from avant_core.gam.domain import (
     ConnectionType,
     Delegation,
@@ -48,7 +48,6 @@ def company(services: Services, email: str = "dono@acai.com.br") -> Company:
         name="Açaí",
         owner_user_id=user.id,
         seat_limit=3,
-        plan=CompanyPlan.EXTERNAL,
         slug=f"acai-{uuid.uuid4().hex[:6]}",
     )
     with services.trusted_uow() as uow:
