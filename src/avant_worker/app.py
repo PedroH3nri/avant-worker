@@ -38,6 +38,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.metrics",
             "avant_worker.tasks.page_views",
             "avant_worker.tasks.exchange_rates",
+            "avant_worker.tasks.earnings",
         ],
     )
     app.conf.update(
@@ -80,6 +81,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "exchange-rates-sync": {
                 "task": "avant.default.sync_exchange_rates",
                 "schedule": crontab(hour="*/6", minute=50),
+            },
+            "gam-sync-mcm-earnings": {
+                "task": "avant.gam.sync_mcm_earnings",
+                "schedule": crontab(day_of_month="15-20", hour=3, minute=10),
             },
             "page-views-sync": {
                 "task": "avant.default.schedule_page_views",

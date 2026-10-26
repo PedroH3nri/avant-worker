@@ -15,11 +15,13 @@ Erros saem já classificados para o avant-core:
 import logging
 import time
 from collections.abc import Iterator, Mapping
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
 import httpx
 from avant_core.gam.domain import Delegation, InventoryStatus, revshare_from_millipercent
+from avant_core.metrics.domain import GamMcmEarning
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,
@@ -133,13 +135,35 @@ class RestGamClient:
                 status=InventoryStatus.INACTIVE if status == "INACTIVE" else InventoryStatus.ACTIVE,
             )
 
+    # --- Fora do GamClient ------------------------------------------------------------
+
+    def list_mcm_earnings(self, network_code: str, month: date) -> Iterator[GamMcmEarning]:
+        """Ganhos do mês de cada filho do MCM da network (``mcmEarnings:fetch``, só leitura)."""
+        params = {"month.year": month.year, "month.month": month.month, "month.day": 1}
+        path = f"networks/{network_code}/mcmEarnings:fetch"
+        for item in self._list(path, "mcmEarnings", params):
+            child_code = _last(item.get("child"))
+            total = item.get("totalEarnings") or {}
+            yield GamMcmEarning(
+                month=_month(item.get("month")) or month,
+                child_network_code=child_code,
+                delegation=_delegation(item.get("delegationType")),
+                currency=str(total.get("currencyCode") or ""),
+                total_earnings_micros=_micros(total),
+                deductions_micros=_micros(item.get("deductions")),
+                child_payment_micros=_micros(item.get("childPayment")),
+                parent_payment_micros=_micros(item.get("parentPayment")),
+            )
+
     # --- HTTP --------------------------------------------------------------------------
 
-    def _list(self, path: str, key: str) -> Iterator[dict[str, Any]]:
+    def _list(
+        self, path: str, key: str, extra: Mapping[str, str | int] | None = None
+    ) -> Iterator[dict[str, Any]]:
         """Percorre todas as páginas de uma listagem da API REST do GAM."""
         token: str | None = None
         while True:
-            params: dict[str, str | int] = {"pageSize": PAGE_SIZE}
+            params: dict[str, str | int] = {"pageSize": PAGE_SIZE, **(extra or {})}
             if token:
                 params["pageToken"] = token
             page = self._get(path, params)
@@ -214,6 +238,29 @@ def _revshare(millipercent: object) -> Decimal | None:
         return revshare_from_millipercent(int(str(millipercent)))
     except (ValueError, InvalidInput):
         log.warning("revshare inválido no MCM", extra={"value": str(millipercent)})
+        return None
+
+
+def _micros(money: object) -> int:
+    """Um ``Money`` do GAM (unidades como texto e nanos) em micros; vazio vira zero."""
+    if not isinstance(money, dict):
+        return 0
+    try:
+        units = int(str(money.get("units") or 0))
+        nanos = int(money.get("nanos") or 0)
+    except ValueError:
+        log.warning("valor inválido nos ganhos do MCM", extra={"value": str(money)})
+        return 0
+    return units * 1_000_000 + nanos // 1_000
+
+
+def _month(value: object) -> date | None:
+    """Um ``Date`` do GAM (ano, mês e dia) no primeiro dia do mês."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        return date(int(value["year"]), int(value["month"]), 1)
+    except (KeyError, TypeError, ValueError):
         return None
 
 

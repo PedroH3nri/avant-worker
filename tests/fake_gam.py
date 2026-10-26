@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from avant_core.metrics.domain import GamReportRow, PageViewCount
+from avant_core.metrics.domain import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,
@@ -103,3 +103,15 @@ class FakeExchangeRates:
     def historical(self, day: date) -> dict[str, Decimal]:
         self.days.append(day)
         return {"BRL": self.rate - Decimal("0.5"), "EUR": Decimal("0.9")}
+
+
+@dataclass
+class FakeEarnings:
+    """Ganhos do MCM prontos por mês; guarda os meses pedidos."""
+
+    by_month: dict[date, list[GamMcmEarning]] = field(default_factory=dict)
+    calls: list[tuple[str, date]] = field(default_factory=list)
+
+    def list_mcm_earnings(self, network_code: str, month: date) -> list[GamMcmEarning]:
+        self.calls.append((network_code, month))
+        return self.by_month.get(month, [])
