@@ -36,6 +36,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.gam.backfill_metrics(company_id, network_id, days=90)` | quando a descoberta do MCM cria uma network | o histórico em lotes de 7 dias |
 | `avant.default.sync_page_views(company_id, network_id, start, end)` | pelo agendador abaixo | visitas da network no contador do iGroone/data (Mongo, só leitura), gravadas com upsert em `metrics.page_views_hourly`; avisa o painel com `metrics.updated` |
 | `avant.default.schedule_page_views` | de hora em hora (minuto 20) | ontem e hoje (datas de São Paulo, como no data) de cada network ativa; sem `PAGE_VIEWS_MONGO_URL`, não agenda nada |
+| `avant.default.sync_exchange_rates` | a cada 6 horas (minuto 50) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.
@@ -74,6 +75,7 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | `GAM_SOAP_VERSION` | opcional: versão da API SOAP dos relatórios (ex.: `v202608`); vazio usa a mais nova do `googleads` |
 | `PAGE_VIEWS_MONGO_URL` | Mongo do iGroone/data, com um usuário só de leitura; sem ela, as visitas não sincronizam |
 | `PAGE_VIEWS_MONGO_DATABASE` | banco do data no Mongo (padrão `admanager`) |
+| `OPENEXCHANGERATES_APP_ID` | chave do Open Exchange Rates (o plano grátis basta); sem ela, as cotações não sincronizam e o painel só mostra dólar |
 | `LOG_LEVEL` | padrão `INFO` |
 
 Os nomes estão no `.env.example` do avant-infra; os valores, só nas VMs.

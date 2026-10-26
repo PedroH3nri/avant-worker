@@ -185,8 +185,8 @@ wheels = [
 
 [[package]]
 name = "avant-core"
-version = "0.17.0"
-source = { git = "https://github.com/PedroH3nri/avant-core?tag=v0.17.0#8b0ad650c941febf3909fbefaf5ad7e8d2b4345b" }
+version = "0.18.0"
+source = { git = "https://github.com/PedroH3nri/avant-core?tag=v0.18.0#bd5048e38391afb8a18a7f380c2ed87f9dba3a96" }
 dependencies = [
     { name = "alembic" },
     { name = "argon2-cffi" },
@@ -222,7 +222,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "avant-core", git = "https://github.com/PedroH3nri/avant-core?tag=v0.17.0" },
+    { name = "avant-core", git = "https://github.com/PedroH3nri/avant-core?tag=v0.18.0" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4,<6" },
     { name = "google-auth", specifier = ">=2.35" },
     { name = "googleads", specifier = ">=50" },

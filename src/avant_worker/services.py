@@ -10,6 +10,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 from typing import Protocol
 
 import redis
@@ -22,6 +23,7 @@ from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
 
+from avant_worker.exchange_rates import OpenExchangeRates
 from avant_worker.gam_client import RestGamClient
 from avant_worker.gam_reports import ReportKind, SoapReportClient
 from avant_worker.page_views import MongoPageViews
@@ -46,6 +48,18 @@ class PageViewSource(Protocol):
         ...
 
 
+class ExchangeRateSource(Protocol):
+    """O que a tarefa das cotações pede: 1 USD em cada moeda, agora ou no fim de um dia."""
+
+    def latest(self) -> dict[str, Decimal]:
+        """Cotações de agora."""
+        ...
+
+    def historical(self, day: date) -> dict[str, Decimal]:
+        """Cotações do fim do dia."""
+        ...
+
+
 class GamNotConfigured(RuntimeError):
     """Tarefa da fila gam num worker sem a chave da conta de serviço."""
 
@@ -61,6 +75,7 @@ class Services:
     gam_override: Gam | None = None
     reports_override: "ReportSource | None" = None
     page_views_override: "PageViewSource | None" = None
+    exchange_rates_override: "ExchangeRateSource | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -68,6 +83,7 @@ class Services:
         self._gam: Gam | None = self.gam_override
         self._reports: ReportSource | None = self.reports_override
         self._page_views: PageViewSource | None = self.page_views_override
+        self._exchange_rates: ExchangeRateSource | None = self.exchange_rates_override
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -124,6 +140,13 @@ class Services:
                 self.settings.page_views_mongo_url, self.settings.page_views_mongo_database
             )
         return self._page_views
+
+    @property
+    def exchange_rates(self) -> "ExchangeRateSource | None":
+        """Cotações do Open Exchange Rates; ``None`` quando o worker não tem a chave."""
+        if self._exchange_rates is None and self.settings.openexchangerates_app_id:
+            self._exchange_rates = OpenExchangeRates(self.settings.openexchangerates_app_id)
+        return self._exchange_rates
 
     @contextmanager
     def lock(self, key: str, *, timeout: int) -> Iterator[bool]:

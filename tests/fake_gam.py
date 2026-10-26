@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 
 from avant_core.metrics.domain import GamReportRow, PageViewCount
 from avant_core.ports import (
@@ -87,3 +88,18 @@ class FakePageViews:
             for item in self.counts_by_network.get(network_code, [])
             if start <= item.date <= end
         ]
+
+
+@dataclass
+class FakeExchangeRates:
+    """Cotações prontas; guarda os dias fechados pedidos."""
+
+    rate: Decimal = Decimal("5")
+    days: list[date] = field(default_factory=list)
+
+    def latest(self) -> dict[str, Decimal]:
+        return {"BRL": self.rate, "USD": Decimal(1)}
+
+    def historical(self, day: date) -> dict[str, Decimal]:
+        self.days.append(day)
+        return {"BRL": self.rate - Decimal("0.5"), "EUR": Decimal("0.9")}
