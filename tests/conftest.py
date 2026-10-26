@@ -20,13 +20,20 @@ from sqlalchemy import Engine, create_engine, text
 from avant_worker.app import app
 from avant_worker.services import Services, use_services
 from avant_worker.settings import Settings
-from tests.fake_gam import FakeExchangeRates, FakeGamClient, FakePageViews, FakeReports
+from tests.fake_gam import (
+    FakeEarnings,
+    FakeExchangeRates,
+    FakeGamClient,
+    FakePageViews,
+    FakeReports,
+)
 
 APP_URL = os.environ.get("AVANT_TEST_DATABASE_URL")
 OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "metrics.mcm_earnings",
     "metrics.exchange_rates",
     "metrics.page_views_hourly",
     "metrics.gam_daily",
@@ -71,6 +78,7 @@ def services(engine: Engine) -> Iterator[Services]:
         reports_override=FakeReports(),
         page_views_override=FakePageViews(),
         exchange_rates_override=FakeExchangeRates(),
+        earnings_override=FakeEarnings(),
     )
     use_services(s)
     app.conf.task_always_eager = True

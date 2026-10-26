@@ -37,6 +37,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.sync_page_views(company_id, network_id, start, end)` | pelo agendador abaixo | visitas da network no contador do iGroone/data (Mongo, só leitura), gravadas com upsert em `metrics.page_views_hourly`; avisa o painel com `metrics.updated` |
 | `avant.default.schedule_page_views` | de hora em hora (minuto 20) | ontem e hoje (datas de São Paulo, como no data) de cada network ativa; sem `PAGE_VIEWS_MONGO_URL`, não agenda nada |
 | `avant.default.sync_exchange_rates` | a cada 6 horas (minuto 50) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
+| `avant.gam.sync_mcm_earnings` | dias 15 a 20, 03:10 UTC | ganhos e deduções do MCM do mês anterior (`mcmEarnings:fetch` na network da Groone, só leitura), como o `PaymentsGamSync` do Genius; 12 meses para trás na primeira vez. Aceita `month="AAAA-MM"` para regravar um mês |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.

@@ -18,7 +18,7 @@ from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.sync import Gam
 from avant_core.mail import LogMailer, ResendMailer
-from avant_core.metrics.domain import GamReportRow, PageViewCount
+from avant_core.metrics.domain import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
@@ -60,6 +60,14 @@ class ExchangeRateSource(Protocol):
         ...
 
 
+class EarningsSource(Protocol):
+    """O que a tarefa dos ganhos do MCM pede ao GAM: os ganhos do mês de cada filho."""
+
+    def list_mcm_earnings(self, network_code: str, month: date) -> Iterable[GamMcmEarning]:
+        """Ganhos do mês de cada filho do MCM da network."""
+        ...
+
+
 class GamNotConfigured(RuntimeError):
     """Tarefa da fila gam num worker sem a chave da conta de serviço."""
 
@@ -76,6 +84,7 @@ class Services:
     reports_override: "ReportSource | None" = None
     page_views_override: "PageViewSource | None" = None
     exchange_rates_override: "ExchangeRateSource | None" = None
+    earnings_override: "EarningsSource | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -84,6 +93,7 @@ class Services:
         self._reports: ReportSource | None = self.reports_override
         self._page_views: PageViewSource | None = self.page_views_override
         self._exchange_rates: ExchangeRateSource | None = self.exchange_rates_override
+        self._earnings: EarningsSource | None = self.earnings_override
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -131,6 +141,16 @@ class Services:
                 raise GamNotConfigured("defina GAM_SERVICE_ACCOUNT_FILE neste worker")
             self._reports = SoapReportClient(key_file, version=self.settings.gam_soap_version)
         return self._reports
+
+    @property
+    def earnings(self) -> "EarningsSource":
+        """Ganhos do MCM pela API REST do GAM (só leitura); só a fila gam tem a chave."""
+        if self._earnings is None:
+            key_file = self.settings.gam_service_account_file
+            if not key_file:
+                raise GamNotConfigured("defina GAM_SERVICE_ACCOUNT_FILE neste worker")
+            self._earnings = RestGamClient.from_key_file(key_file)
+        return self._earnings
 
     @property
     def page_views(self) -> "PageViewSource | None":
