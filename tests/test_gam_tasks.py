@@ -3,15 +3,15 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from avant_core.company.domain import Company
-from avant_core.gam.domain import (
+from avant_core.company.model import Company
+from avant_core.gam.model import (
     ConnectionType,
     Delegation,
     InventoryStatus,
     Network,
     NetworkStatus,
 )
-from avant_core.identity.domain import User
+from avant_core.identity.model import User
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,

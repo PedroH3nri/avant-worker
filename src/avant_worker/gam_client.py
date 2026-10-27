@@ -20,8 +20,8 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
-from avant_core.gam.domain import Delegation, InventoryStatus, revshare_from_millipercent
-from avant_core.metrics.domain import GamMcmEarning
+from avant_core.gam.model import Delegation, InventoryStatus, revshare_from_millipercent
+from avant_core.metrics.model import GamMcmEarning
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,

@@ -24,9 +24,9 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from avant_core.gam import sync
-from avant_core.gam.domain import ConnectionType, Delegation, Network
-from avant_core.metrics.application import StoredMetrics, store_gam_report
+from avant_core.gam import sync_service
+from avant_core.gam.model import ConnectionType, Delegation, Network
+from avant_core.metrics.service import StoredMetrics, store_gam_report
 from avant_core.ports import GamError, GamUnavailable
 
 from avant_worker.app import app
@@ -122,7 +122,7 @@ def schedule_reprocess() -> int:
 
 def _fan_out(start: date, end: date) -> int:
     """Agenda ``sync_metrics`` do período para cada network ativa e devolve quantas."""
-    networks = sync.active_networks(get_services().trusted_uow())
+    networks = sync_service.active_networks(get_services().trusted_uow())
     for company_id, network_id in networks:
         sync_metrics.delay(str(company_id), str(network_id), start.isoformat(), end.isoformat())
     return len(networks)

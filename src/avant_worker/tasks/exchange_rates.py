@@ -9,7 +9,7 @@ Empresa. Worker sem ``OPENEXCHANGERATES_APP_ID`` não faz nada.
 import logging
 from datetime import UTC, date, timedelta
 
-from avant_core.money.application import last_rates_day, store_exchange_rates
+from avant_core.money.service import last_rates_day, store_exchange_rates
 
 from avant_worker.app import app
 from avant_worker.services import get_services

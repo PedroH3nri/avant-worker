@@ -16,8 +16,8 @@ from datetime import date, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from avant_core.gam import sync
-from avant_core.metrics.application import store_page_views
+from avant_core.gam import sync_service
+from avant_core.metrics.service import store_page_views
 
 from avant_worker.app import app
 from avant_worker.events import METRICS_UPDATED, publish
@@ -72,7 +72,7 @@ def schedule_page_views() -> int:
         return 0
     today = services.clock.now().astimezone(DATA_TIMEZONE).date()
     start, end = (today - timedelta(days=1)).isoformat(), today.isoformat()
-    networks = sync.active_networks(services.trusted_uow())
+    networks = sync_service.active_networks(services.trusted_uow())
     for company_id, network_id in networks:
         sync_page_views.delay(str(company_id), str(network_id), start, end)
     return len(networks)

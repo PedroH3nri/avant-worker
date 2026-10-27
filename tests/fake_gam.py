@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from avant_core.metrics.domain import GamMcmEarning, GamReportRow, PageViewCount
+from avant_core.metrics.model import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import (
     GamAccessDenied,
     GamAdUnit,
