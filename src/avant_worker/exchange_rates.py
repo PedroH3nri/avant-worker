@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 import httpx
-from avant_core.money.domain import CURRENCIES
+from avant_core.money.model import CURRENCIES
 
 BASE_URL = "https://openexchangerates.org/api/"
 SYMBOLS = ",".join(currency.code for currency in CURRENCIES)

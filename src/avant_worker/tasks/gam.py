@@ -22,7 +22,7 @@ import logging
 import uuid
 from typing import Any
 
-from avant_core.gam import contracts, sync
+from avant_core.gam import contract_service, sync_service
 from avant_core.ports import GamError, GamUnavailable
 from celery import Task
 
@@ -60,7 +60,7 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
         gam, clock, mailer = services.gam, services.clock, services.mailer
         try:
             if test:
-                check = sync.check_network(
+                check = sync_service.check_network(
                     services.uow(company_uuid),
                     network_id=network_uuid,
                     gam=gam,
@@ -75,7 +75,7 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                         extra={"network_id": network_id, "error": check.error},
                     )
                     return result
-            result["sites"] = sync.import_sites(
+            result["sites"] = sync_service.import_sites(
                 services.uow(company_uuid),
                 network_id=network_uuid,
                 gam=gam,
@@ -83,7 +83,7 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                 mailer=mailer,
             )
             _updated(services, company_uuid, network_uuid)
-            result["ad_units"] = sync.import_ad_units(
+            result["ad_units"] = sync_service.import_ad_units(
                 services.uow(company_uuid),
                 network_id=network_uuid,
                 gam=gam,
@@ -124,7 +124,7 @@ def check_access(company_id: str, network_id: str) -> dict[str, Any]:
             return {"skipped": "locked"}
         company_uuid, network_uuid = uuid.UUID(company_id), uuid.UUID(network_id)
         try:
-            check = sync.check_network(
+            check = sync_service.check_network(
                 services.uow(company_uuid),
                 network_id=network_uuid,
                 gam=services.gam,
@@ -150,7 +150,7 @@ def discover_mcm() -> dict[str, int]:
     with services.lock("gam:discover_mcm", timeout=LOCK_SECONDS) as locked:
         if not locked:
             return {"skipped": 1}
-        found = sync.discover_mcm(
+        found = sync_service.discover_mcm(
             services.trusted_uow(), gam=services.gam, clock=services.clock, mailer=services.mailer
         )
     for company_id, network_id in found.created:
@@ -180,7 +180,7 @@ def sync_contracts() -> dict[str, int]:
     with services.lock("gam:sync_contracts", timeout=LOCK_SECONDS) as locked:
         if not locked:
             return {"skipped_run": 1}
-        result = contracts.sync_contracts(
+        result = contract_service.sync_contracts(
             services.trusted_uow(), gam=services.gam, clock=services.clock
         )
     counts = {"started": result.started, "unchanged": result.unchanged, "skipped": result.skipped}
@@ -202,7 +202,7 @@ def schedule_imports() -> int:
 
 def _fan_out(task: "Task[Any, Any]", kwargs: dict[str, Any]) -> int:
     """Agenda a tarefa para cada network ativa e devolve quantas."""
-    networks = sync.active_networks(get_services().trusted_uow())
+    networks = sync_service.active_networks(get_services().trusted_uow())
     for company_id, network_id in networks:
         task.delay(str(company_id), str(network_id), **kwargs)
     return len(networks)

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 import pytest
-from avant_core.gam.domain import Delegation, InventoryStatus
+from avant_core.gam.model import Delegation, InventoryStatus
 from avant_core.ports import GamAccessDenied, GamError, GamNetworkNotFound, GamUnavailable
 from google.auth.credentials import Credentials
 

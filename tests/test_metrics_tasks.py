@@ -1,8 +1,8 @@
 from datetime import date, timedelta
 from typing import Any
 
-from avant_core.gam.domain import ConnectionType, Delegation, Network
-from avant_core.metrics.domain import GamCounts, GamReportRow
+from avant_core.gam.model import ConnectionType, Delegation, Network
+from avant_core.metrics.model import GamCounts, GamReportRow
 from avant_core.ports import GamAccessDenied, GamUnavailable
 from sqlalchemy import text
 
