@@ -12,6 +12,7 @@ import httpx
 from avant_core.money.catalog import CURRENCIES
 
 BASE_URL = "https://openexchangerates.org/api/"
+
 SYMBOLS = ",".join(currency.code for currency in CURRENCIES)
 
 

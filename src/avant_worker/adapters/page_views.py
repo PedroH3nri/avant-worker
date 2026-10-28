@@ -13,6 +13,7 @@ from avant_core.metrics.models import PageViewCount
 from pymongo import MongoClient
 
 DOMAINS_COLLECTION = "page_views_v2_domains"
+
 TIMEOUT_MS = 10_000
 
 

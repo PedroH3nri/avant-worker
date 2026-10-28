@@ -23,10 +23,10 @@ from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
 
-from avant_worker.exchange_rates import OpenExchangeRates
-from avant_worker.gam_client import RestGamClient
-from avant_worker.gam_reports import ReportKind, SoapReportClient
-from avant_worker.page_views import MongoPageViews
+from avant_worker.adapters.exchange_rates import OpenExchangeRates
+from avant_worker.adapters.gam_client import RestGamClient
+from avant_worker.adapters.gam_reports import ReportKind, SoapReportClient
+from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
 
 

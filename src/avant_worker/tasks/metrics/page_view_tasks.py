@@ -19,13 +19,14 @@ from zoneinfo import ZoneInfo
 from avant_core.gam.sync.services import sync_service
 from avant_core.metrics.services import store_page_views
 
+from avant_worker.adapters.events import METRICS_UPDATED, publish
 from avant_worker.app import app
-from avant_worker.events import METRICS_UPDATED, publish
 from avant_worker.services import get_services
 
 log = logging.getLogger("avant.worker.page_views")
 
 LOCK_SECONDS = 10 * 60
+
 DATA_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 

@@ -8,7 +8,7 @@ from avant_core.gam.client.errors import GamAccessDenied, GamError
 from avant_core.gam.client.models import GamAdUnit, GamChildPublisher, GamNetworkInfo, GamSite
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 
-from avant_worker.gam_reports import ReportKind
+from avant_worker.adapters import ReportKind
 
 
 @dataclass

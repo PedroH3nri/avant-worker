@@ -253,7 +253,7 @@ def test_sync_publishes_network_events(services: Services) -> None:
         pytest.skip("defina AVANT_TEST_REDIS_URL")
     import json
 
-    from avant_worker.events import channel
+    from avant_worker.adapters import channel
 
     c = company(services)
     n = network(services, c)
@@ -272,6 +272,6 @@ def test_sync_publishes_network_events(services: Services) -> None:
 
 
 def test_publish_without_redis_is_a_no_op() -> None:
-    from avant_worker.events import publish
+    from avant_worker.adapters import publish
 
     publish(None, uuid.uuid4(), "network.updated", {"network_id": "x"})
