@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from datetime import date
 from typing import Any
 
-from avant_core.metrics.model import PageViewCount
+from avant_core.metrics.models import PageViewCount
 from pymongo import MongoClient
 
 DOMAINS_COLLECTION = "page_views_v2_domains"

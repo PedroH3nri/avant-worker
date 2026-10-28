@@ -16,8 +16,8 @@ from datetime import date, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from avant_core.gam import sync_service
-from avant_core.metrics.service import store_page_views
+from avant_core.gam.sync.services import sync_service
+from avant_core.metrics.services import store_page_views
 
 from avant_worker.app import app
 from avant_worker.events import METRICS_UPDATED, publish

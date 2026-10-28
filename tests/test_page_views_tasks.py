@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
-from avant_core.metrics.model import PageViewCount
+from avant_core.metrics.models import PageViewCount
 from sqlalchemy import text
 
 from avant_worker.app import _route, app
