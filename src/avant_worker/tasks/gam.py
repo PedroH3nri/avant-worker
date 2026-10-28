@@ -22,8 +22,9 @@ import logging
 import uuid
 from typing import Any
 
-from avant_core.gam import contract_service, sync_service
-from avant_core.ports import GamError, GamUnavailable
+from avant_core.gam.client.errors import GamError, GamUnavailable
+from avant_core.gam.contracts.services import contract_service
+from avant_core.gam.sync.services import sync_service
 from celery import Task
 
 from avant_worker.app import app

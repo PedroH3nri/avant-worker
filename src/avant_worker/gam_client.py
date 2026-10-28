@@ -20,18 +20,17 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
-from avant_core.gam.model import Delegation, InventoryStatus, revshare_from_millipercent
-from avant_core.metrics.model import GamMcmEarning
-from avant_core.ports import (
+from avant_core.gam.client.errors import (
     GamAccessDenied,
-    GamAdUnit,
-    GamChildPublisher,
     GamError,
-    GamNetworkInfo,
     GamNetworkNotFound,
-    GamSite,
     GamUnavailable,
 )
+from avant_core.gam.client.models import GamAdUnit, GamChildPublisher, GamNetworkInfo, GamSite
+from avant_core.gam.contracts.models import revshare_from_millipercent
+from avant_core.gam.inventory.enums import InventoryStatus
+from avant_core.gam.networks.enums import Delegation
+from avant_core.metrics.models import GamMcmEarning
 from avant_core.shared.errors import InvalidInput
 from google.auth import exceptions as auth_exceptions
 from google.auth.credentials import Credentials

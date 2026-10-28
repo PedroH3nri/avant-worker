@@ -16,9 +16,9 @@ from typing import Protocol
 import redis
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
-from avant_core.gam.sync_service import Gam
+from avant_core.gam.client.models import Gam
 from avant_core.mail import LogMailer, ResendMailer
-from avant_core.metrics.model import GamMcmEarning, GamReportRow, PageViewCount
+from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine

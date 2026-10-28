@@ -19,8 +19,14 @@ from datetime import date
 from enum import StrEnum
 from typing import Any
 
-from avant_core.metrics.model import REPORT_CURRENCY, GamCounts, GamReportRow
-from avant_core.ports import GamAccessDenied, GamError, GamNetworkNotFound, GamUnavailable
+from avant_core.gam.client.errors import (
+    GamAccessDenied,
+    GamError,
+    GamNetworkNotFound,
+    GamUnavailable,
+)
+from avant_core.metrics.models import GamCounts, GamReportRow
+from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from google.auth import exceptions as auth_exceptions
 from googleads import ad_manager, errors, oauth2
 

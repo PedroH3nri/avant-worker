@@ -1,8 +1,8 @@
 from datetime import UTC, date, datetime
 
 import httpx
-from avant_core.gam.model import Delegation
-from avant_core.metrics.model import GamMcmEarning
+from avant_core.gam.networks.enums import Delegation
+from avant_core.metrics.models import GamMcmEarning
 from google.auth.credentials import AnonymousCredentials
 
 from avant_worker.app import _route, app
