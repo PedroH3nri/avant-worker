@@ -10,7 +10,7 @@ Empresas, por isso a gravação usa ``trusted_uow``.
 import logging
 from datetime import UTC, date
 
-from avant_core.metrics.earnings_service import last_earnings_month, store_mcm_earnings
+from avant_core.metrics.services import last_earnings_month, store_mcm_earnings
 
 from avant_worker.app import app
 from avant_worker.services import get_services
@@ -18,6 +18,7 @@ from avant_worker.services import get_services
 log = logging.getLogger("avant.worker.earnings")
 
 BACKFILL_MONTHS = 12
+
 LOCK_SECONDS = 1800
 
 

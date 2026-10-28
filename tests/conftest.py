@@ -13,7 +13,7 @@ import pytest
 import redis
 from alembic import command
 from alembic.config import Config
-from avant_core.gam.sync_service import Gam
+from avant_core.gam.client.models import Gam
 from avant_core.shared.clock import SystemClock
 from sqlalchemy import Engine, create_engine, text
 

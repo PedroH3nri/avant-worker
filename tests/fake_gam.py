@@ -4,17 +4,11 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from avant_core.metrics.model import GamMcmEarning, GamReportRow, PageViewCount
-from avant_core.ports import (
-    GamAccessDenied,
-    GamAdUnit,
-    GamChildPublisher,
-    GamError,
-    GamNetworkInfo,
-    GamSite,
-)
+from avant_core.gam.client.errors import GamAccessDenied, GamError
+from avant_core.gam.client.models import GamAdUnit, GamChildPublisher, GamNetworkInfo, GamSite
+from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 
-from avant_worker.gam_reports import ReportKind
+from avant_worker.adapters import ReportKind
 
 
 @dataclass

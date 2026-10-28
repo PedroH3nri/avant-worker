@@ -24,22 +24,27 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from avant_core.gam import sync_service
-from avant_core.gam.model import ConnectionType, Delegation, Network
-from avant_core.metrics.service import StoredMetrics, store_gam_report
-from avant_core.ports import GamError, GamUnavailable
+from avant_core.gam.client.errors import GamError, GamUnavailable
+from avant_core.gam.networks.enums import ConnectionType, Delegation
+from avant_core.gam.networks.models import Network
+from avant_core.gam.sync.services import sync_service
+from avant_core.metrics.services import StoredMetrics, store_gam_report
 
+from avant_worker.adapters.events import METRICS_UPDATED, publish
+from avant_worker.adapters.gam_reports import ReportKind
 from avant_worker.app import app
-from avant_worker.events import METRICS_UPDATED, publish
-from avant_worker.gam_reports import ReportKind
 from avant_worker.services import Services, get_services
 
 log = logging.getLogger("avant.worker.metrics")
 
 LOCK_SECONDS = 30 * 60
+
 BACKFILL_DAYS = 90
+
 BACKFILL_CHUNK_DAYS = 7
+
 REPROCESS_DAYS = 3
+
 RETRY_FOR = (GamUnavailable,)
 
 

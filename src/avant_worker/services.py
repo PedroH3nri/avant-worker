@@ -16,17 +16,17 @@ from typing import Protocol
 import redis
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
-from avant_core.gam.sync_service import Gam
+from avant_core.gam.client.models import Gam
 from avant_core.mail import LogMailer, ResendMailer
-from avant_core.metrics.model import GamMcmEarning, GamReportRow, PageViewCount
+from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from sqlalchemy import Engine, create_engine
 
-from avant_worker.exchange_rates import OpenExchangeRates
-from avant_worker.gam_client import RestGamClient
-from avant_worker.gam_reports import ReportKind, SoapReportClient
-from avant_worker.page_views import MongoPageViews
+from avant_worker.adapters.exchange_rates import OpenExchangeRates
+from avant_worker.adapters.gam_client import RestGamClient
+from avant_worker.adapters.gam_reports import ReportKind, SoapReportClient
+from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
 
 

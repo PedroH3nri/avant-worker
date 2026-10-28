@@ -3,23 +3,13 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from avant_core.company.model import Company
-from avant_core.gam.model import (
-    ConnectionType,
-    Delegation,
-    InventoryStatus,
-    Network,
-    NetworkStatus,
-)
-from avant_core.identity.model import User
-from avant_core.ports import (
-    GamAccessDenied,
-    GamAdUnit,
-    GamChildPublisher,
-    GamNetworkInfo,
-    GamSite,
-    GamUnavailable,
-)
+from avant_core.company.models import Company
+from avant_core.gam.client.errors import GamAccessDenied, GamUnavailable
+from avant_core.gam.client.models import GamAdUnit, GamChildPublisher, GamNetworkInfo, GamSite
+from avant_core.gam.inventory.enums import InventoryStatus
+from avant_core.gam.networks.enums import ConnectionType, Delegation, NetworkStatus
+from avant_core.gam.networks.models import Network
+from avant_core.identity.models import User
 from sqlalchemy import text
 
 from avant_worker.app import app
@@ -263,7 +253,7 @@ def test_sync_publishes_network_events(services: Services) -> None:
         pytest.skip("defina AVANT_TEST_REDIS_URL")
     import json
 
-    from avant_worker.events import channel
+    from avant_worker.adapters import channel
 
     c = company(services)
     n = network(services, c)
@@ -282,6 +272,6 @@ def test_sync_publishes_network_events(services: Services) -> None:
 
 
 def test_publish_without_redis_is_a_no_op() -> None:
-    from avant_worker.events import publish
+    from avant_worker.adapters import publish
 
     publish(None, uuid.uuid4(), "network.updated", {"network_id": "x"})

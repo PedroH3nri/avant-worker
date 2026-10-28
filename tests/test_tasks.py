@@ -1,7 +1,7 @@
 import uuid
 from datetime import timedelta
 
-from avant_core.identity.model import Session, User
+from avant_core.identity.models import Session, User
 from sqlalchemy import text
 
 from avant_worker.app import QUEUES, _route, app

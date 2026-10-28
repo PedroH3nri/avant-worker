@@ -1,14 +1,14 @@
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
-from avant_core.metrics.model import PageViewCount
+from avant_core.metrics.models import PageViewCount
 from sqlalchemy import text
 
+from avant_worker.adapters import parse_documents
 from avant_worker.app import _route, app
-from avant_worker.page_views import parse_documents
 from avant_worker.services import Services
 from avant_worker.tasks.gam import sync_network
-from avant_worker.tasks.page_views import schedule_page_views, sync_page_views
+from avant_worker.tasks.metrics import schedule_page_views, sync_page_views
 from tests.fake_gam import FakePageViews
 from tests.test_gam_tasks import company, count, fake, inventory, network
 

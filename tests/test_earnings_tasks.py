@@ -1,14 +1,16 @@
 from datetime import UTC, date, datetime
 
 import httpx
-from avant_core.gam.model import Delegation
-from avant_core.metrics.model import GamMcmEarning
+from avant_core.gam.networks.enums import Delegation
+from avant_core.metrics.models import GamMcmEarning
 from google.auth.credentials import AnonymousCredentials
 
+from avant_worker.adapters import RestGamClient
+from avant_worker.adapters.gam_client import BASE_URL
 from avant_worker.app import _route, app
-from avant_worker.gam_client import BASE_URL, RestGamClient
 from avant_worker.services import Services
-from avant_worker.tasks.earnings import BACKFILL_MONTHS, months_to_fetch, sync_mcm_earnings
+from avant_worker.tasks.metrics import months_to_fetch, sync_mcm_earnings
+from avant_worker.tasks.metrics.mcm_earnings_tasks import BACKFILL_MONTHS
 from tests.conftest import GROONE_NETWORK
 from tests.fake_gam import FakeEarnings
 from tests.test_gam_tasks import company, count, network

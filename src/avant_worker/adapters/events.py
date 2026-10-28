@@ -15,6 +15,7 @@ import redis
 log = logging.getLogger("avant.worker.events")
 
 NETWORK_UPDATED = "network.updated"
+
 METRICS_UPDATED = "metrics.updated"
 
 

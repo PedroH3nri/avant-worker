@@ -1,13 +1,14 @@
 from datetime import date, timedelta
 from typing import Any
 
-from avant_core.gam.model import ConnectionType, Delegation, Network
-from avant_core.metrics.model import GamCounts, GamReportRow
-from avant_core.ports import GamAccessDenied, GamUnavailable
+from avant_core.gam.client.errors import GamAccessDenied, GamUnavailable
+from avant_core.gam.networks.enums import ConnectionType, Delegation
+from avant_core.gam.networks.models import Network
+from avant_core.metrics.models import GamCounts, GamReportRow
 from sqlalchemy import text
 
+from avant_worker.adapters import ReportKind, parse_report, report_query
 from avant_worker.app import _route, app
-from avant_worker.gam_reports import ReportKind, parse_report, report_query
 from avant_worker.services import Services
 from avant_worker.tasks.gam import sync_network
 from avant_worker.tasks.metrics import (

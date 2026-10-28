@@ -19,15 +19,25 @@ from datetime import date
 from enum import StrEnum
 from typing import Any
 
-from avant_core.metrics.model import REPORT_CURRENCY, GamCounts, GamReportRow
-from avant_core.ports import GamAccessDenied, GamError, GamNetworkNotFound, GamUnavailable
+from avant_core.gam.client.errors import (
+    GamAccessDenied,
+    GamError,
+    GamNetworkNotFound,
+    GamUnavailable,
+)
+from avant_core.metrics.models import GamCounts, GamReportRow
+from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from google.auth import exceptions as auth_exceptions
 from googleads import ad_manager, errors, oauth2
 
 APPLICATION_NAME = "Groone Avant"
+
 POLL_SECONDS = 5
+
 MAX_HIERARCHY_LEVELS = 10
+
 COLUMN_PREFIX = "Column."
+
 DIMENSION_PREFIX = "Dimension."
 
 COUNT_COLUMNS = {
@@ -39,10 +49,13 @@ COUNT_COLUMNS = {
     "eligible_requests": "TOTAL_PROGRAMMATIC_ELIGIBLE_AD_REQUESTS",
     "responses_served": "PROGRAMMATIC_RESPONSES_SERVED",
 }
+
 REVENUE_COLUMN = "AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE"
 
 ACCESS_DENIED_MARKERS = ("AuthenticationError", "PermissionError", "PERMISSION_DENIED")
+
 NOT_FOUND_MARKERS = ("NETWORK_NOT_FOUND", "NO_NETWORKS_TO_ACCESS", "NETWORK_CODE_NOT_FOUND")
+
 TEMPORARY_MARKERS = ("QuotaError", "ServerError", "InternalApiError", "EXCEEDED_QUOTA")
 
 log = logging.getLogger("avant.worker.gam")
