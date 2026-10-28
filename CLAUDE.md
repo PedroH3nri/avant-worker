@@ -7,7 +7,10 @@ Worker e agendador (Celery) do Groone Avant. Leia o README antes de mudar algo.
 - Tarefa com `name="avant.<fila>.<nome>"`; a fila sai do nome (`task_routes` em `app.py`).
 - Tarefa de uma Empresa usa `services.uow(company_id)`. `trusted_uow()` (sem RLS) só para
   limpeza e para varrer todas as Empresas, sempre documentado na tarefa.
-- O GAM é só leitura: `gam_client.py` não ganha método que escreve sem revisão do Pedro.
+- O GAM é só leitura: `adapters/gam_client.py` não ganha método que escreve sem revisão do Pedro.
+- Organização por domínio, como no core: tarefas em `tasks/<domínio>/<assunto>_tasks.py` (gam,
+  metrics, money, maintenance) e adaptadores em `adapters/`. Tarefa nova entra no `include` de
+  `app.py`.
 - Tarefas idempotentes: `acks_late` está ligado e uma tarefa pode rodar duas vezes.
 - Clean code obrigatório (skill `avant-clean-code`): nomes claros, nada de nome de uma letra,
   toda função com docstring de 1 ou 2 linhas sobre o que faz, nada de comentário ao lado do

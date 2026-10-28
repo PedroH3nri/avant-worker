@@ -5,14 +5,11 @@ import httpx
 import pytest
 from sqlalchemy import text
 
+from avant_worker.adapters import ExchangeRatesUnavailable, OpenExchangeRates
 from avant_worker.app import _route, app
-from avant_worker.exchange_rates import ExchangeRatesUnavailable, OpenExchangeRates
 from avant_worker.services import Services
-from avant_worker.tasks.exchange_rates import (
-    BACKFILL_DAYS,
-    closed_days_to_fetch,
-    sync_exchange_rates,
-)
+from avant_worker.tasks.money import closed_days_to_fetch, sync_exchange_rates
+from avant_worker.tasks.money.exchange_rate_tasks import BACKFILL_DAYS
 from tests.fake_gam import FakeExchangeRates
 
 TODAY = date(2026, 11, 2)

@@ -1,18 +1,14 @@
-"""Tarefas do Google Ad Manager (fila ``gam``).
+"""Tarefas de uma network do Google Ad Manager (fila ``gam``).
 
 - ``sync_network``: teste de acesso, sites e ad units de uma network, nessa ordem. A API
   enfileira ao conectar e no "sincronizar agora"; a descoberta do MCM, para cada network
   nova. Com ``test=False`` (agendador de 6 em 6 horas), só importa.
 - ``check_access``: só o teste de acesso, todo dia.
-- ``discover_mcm``: de hora em hora, lê os child publishers da network da Groone. Para
-  cada network nova, também pede o histórico das métricas (``backfill_metrics``).
-- ``sync_contracts``: de hora em hora, depois da descoberta, lê o revshare aprovado de cada
-  child publisher Manage Account e troca o contrato da network quando ele muda.
 - ``schedule_*``: o agendador chama e elas espalham uma tarefa por network ativa.
 
 Cada network roda com o Unit of Work da própria Empresa (RLS) e uma trava no Redis, para
-o agendador e o "sincronizar agora" não importarem a mesma network ao mesmo tempo. Só a
-descoberta, os contratos e os ``schedule_*`` usam ``trusted_uow``: percorrem todas as Empresas.
+o agendador e o "sincronizar agora" não importarem a mesma network ao mesmo tempo. Só os
+``schedule_*`` usam ``trusted_uow``: percorrem todas as Empresas.
 
 Erro temporário do GAM (``GamUnavailable``) volta para a fila em 1, 2, 4 e 8 minutos.
 Tudo aqui é idempotente: a importação é upsert pelo id do GAM.
@@ -23,20 +19,19 @@ import uuid
 from typing import Any
 
 from avant_core.gam.client.errors import GamError, GamUnavailable
-from avant_core.gam.contracts.services import contract_service
 from avant_core.gam.sync.services import sync_service
 from celery import Task
 
+from avant_worker.adapters.events import NETWORK_UPDATED, publish
 from avant_worker.app import app
-from avant_worker.events import NETWORK_UPDATED, publish
 from avant_worker.services import Services, get_services
-from avant_worker.tasks.metrics import backfill_metrics
 
 log = logging.getLogger("avant.worker.gam")
 
 # Uma importação grande (milhares de ad units) leva poucos minutos; a trava cai sozinha
 # depois disso se o worker morrer no meio.
 LOCK_SECONDS = 30 * 60
+
 # Erro temporário: 1, 2, 4 e 8 minutos (retry_backoff dobra a cada tentativa).
 RETRY_FOR = (GamUnavailable,)
 
@@ -135,58 +130,6 @@ def check_access(company_id: str, network_id: str) -> dict[str, Any]:
         finally:
             _updated(services, company_uuid, network_uuid)
     return {"ok": check.ok, "status": check.status.value, "error": check.error}
-
-
-@app.task(
-    name="avant.gam.discover_mcm",
-    autoretry_for=RETRY_FOR,
-    retry_backoff=60,
-    retry_backoff_max=8 * 60,
-    retry_jitter=False,
-    max_retries=4,
-)
-def discover_mcm() -> dict[str, int]:
-    """trusted_uow: a descoberta liga networks a Empresas pelo e-mail do dono."""
-    services = get_services()
-    with services.lock("gam:discover_mcm", timeout=LOCK_SECONDS) as locked:
-        if not locked:
-            return {"skipped": 1}
-        found = sync_service.discover_mcm(
-            services.trusted_uow(), gam=services.gam, clock=services.clock, mailer=services.mailer
-        )
-    for company_id, network_id in found.created:
-        sync_network.delay(str(company_id), str(network_id))
-        backfill_metrics.delay(str(company_id), str(network_id))
-    counts = {
-        "created": len(found.created),
-        "candidates": found.candidates,
-        "disconnected": found.disconnected,
-        "updated": found.updated,
-    }
-    log.info("descoberta do MCM", extra=counts)
-    return counts
-
-
-@app.task(
-    name="avant.gam.sync_contracts",
-    autoretry_for=RETRY_FOR,
-    retry_backoff=60,
-    retry_backoff_max=8 * 60,
-    retry_jitter=False,
-    max_retries=4,
-)
-def sync_contracts() -> dict[str, int]:
-    """trusted_uow: o revshare de todas as networks Manage Account vem de uma chamada só."""
-    services = get_services()
-    with services.lock("gam:sync_contracts", timeout=LOCK_SECONDS) as locked:
-        if not locked:
-            return {"skipped_run": 1}
-        result = contract_service.sync_contracts(
-            services.trusted_uow(), gam=services.gam, clock=services.clock
-        )
-    counts = {"started": result.started, "unchanged": result.unchanged, "skipped": result.skipped}
-    log.info("contratos do MCM", extra=counts)
-    return counts
 
 
 @app.task(name="avant.gam.schedule_tests")

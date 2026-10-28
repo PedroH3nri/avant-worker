@@ -39,8 +39,11 @@ from google.auth.transport import Response as AuthResponse
 from google.oauth2 import service_account
 
 BASE_URL = "https://admanager.googleapis.com/v1/"
+
 SCOPES = ("https://www.googleapis.com/auth/admanager.readonly",)
+
 PAGE_SIZE = 1000
+
 # Papel predefinido "Administrador" do Ad Manager (os papéis do Google têm id negativo).
 ADMINISTRATOR_ROLE_ID = "-1"
 

@@ -18,6 +18,7 @@ from avant_worker.services import get_services
 log = logging.getLogger("avant.worker.earnings")
 
 BACKFILL_MONTHS = 12
+
 LOCK_SECONDS = 1800
 
 

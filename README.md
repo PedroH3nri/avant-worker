@@ -4,6 +4,25 @@ Worker e agendador (Celery) do Groone Avant. As regras ficam no
 [avant-core](https://github.com/PedroH3nri/avant-core), instalado por tag; aqui só há
 as tarefas, que montam os adaptadores e chamam os casos de uso.
 
+## Estrutura
+
+Por domínio, como no avant-core:
+
+```
+src/avant_worker/
+  app.py        Celery: filas, include das tarefas e agenda do beat
+  settings.py   variáveis de ambiente
+  services.py   monta os adaptadores e o Unit of Work para as tarefas
+  logs.py       logs JSON
+  adapters/     gam_client (REST), gam_reports (SOAP), page_views (Mongo do data),
+                exchange_rates (Open Exchange Rates), events (Redis para o SSE)
+  tasks/
+    gam/          network_tasks (teste e importação), mcm_tasks (descoberta e contratos)
+    metrics/      gam_metrics_tasks, page_view_tasks, mcm_earnings_tasks
+    money/        exchange_rate_tasks
+    maintenance/  purge_tasks
+```
+
 ## Processos
 
 | Processo | Comando | Faz |
@@ -53,7 +72,7 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
   limpeza e para varrer todas as Empresas.
 - **Conexões**: cada processo filho monta o próprio pool na primeira tarefa.
 - **GAM**: API REST do Ad Manager (v1), só leitura (escopo `admanager.readonly`), em
-  `gam_client.py`. 401/403 e 404 são falhas permanentes da network (três seguidas viram
+  `adapters/gam_client.py`. 401/403 e 404 são falhas permanentes da network (três seguidas viram
   erro e aviso ao dono); 429, 5xx e falha de rede voltam para a fila em 1, 2, 4 e 8 minutos
   sem mudar o estado. Uma trava no Redis por network impede duas importações ao mesmo tempo.
 - **Avisos em tempo real**: depois de cada etapa de uma network, o worker publica

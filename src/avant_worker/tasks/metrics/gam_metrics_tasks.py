@@ -30,17 +30,21 @@ from avant_core.gam.networks.models import Network
 from avant_core.gam.sync.services import sync_service
 from avant_core.metrics.services import StoredMetrics, store_gam_report
 
+from avant_worker.adapters.events import METRICS_UPDATED, publish
+from avant_worker.adapters.gam_reports import ReportKind
 from avant_worker.app import app
-from avant_worker.events import METRICS_UPDATED, publish
-from avant_worker.gam_reports import ReportKind
 from avant_worker.services import Services, get_services
 
 log = logging.getLogger("avant.worker.metrics")
 
 LOCK_SECONDS = 30 * 60
+
 BACKFILL_DAYS = 90
+
 BACKFILL_CHUNK_DAYS = 7
+
 REPROCESS_DAYS = 3
+
 RETRY_FOR = (GamUnavailable,)
 
 

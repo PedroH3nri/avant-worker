@@ -33,12 +33,13 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
     app = Celery(
         "avant",
         include=[
-            "avant_worker.tasks.maintenance",
-            "avant_worker.tasks.gam",
-            "avant_worker.tasks.metrics",
-            "avant_worker.tasks.page_views",
-            "avant_worker.tasks.exchange_rates",
-            "avant_worker.tasks.earnings",
+            "avant_worker.tasks.maintenance.purge_tasks",
+            "avant_worker.tasks.gam.network_tasks",
+            "avant_worker.tasks.gam.mcm_tasks",
+            "avant_worker.tasks.metrics.gam_metrics_tasks",
+            "avant_worker.tasks.metrics.page_view_tasks",
+            "avant_worker.tasks.money.exchange_rate_tasks",
+            "avant_worker.tasks.metrics.mcm_earnings_tasks",
         ],
     )
     app.conf.update(

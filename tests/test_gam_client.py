@@ -15,7 +15,8 @@ from avant_core.gam.inventory.enums import InventoryStatus
 from avant_core.gam.networks.enums import Delegation
 from google.auth.credentials import Credentials
 
-from avant_worker.gam_client import BASE_URL, RestGamClient
+from avant_worker.adapters import RestGamClient
+from avant_worker.adapters.gam_client import BASE_URL
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
