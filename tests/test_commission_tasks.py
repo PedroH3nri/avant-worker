@@ -7,11 +7,12 @@ from avant_core.commissions.models import CommissionRule, CommissionWindow
 from avant_core.company.models import ClientProfile, Company, Membership
 from avant_core.gam.contracts.models import Contract
 from avant_core.identity.models import User
-from avant_core.metrics.models import GamCounts, GamDailyMetric
+from avant_core.metrics.models import GamCounts, GamDailyMetric, McmEarning
 
 from avant_worker.app import _route, app
 from avant_worker.services import Services
 from avant_worker.tasks.commissions import (
+    calculate_recent_commissions,
     calculate_today_commissions,
     close_commissions,
     previous_month,
@@ -39,7 +40,9 @@ def test_previous_month() -> None:
     assert previous_month(date(2026, 1, 15)) == date(2025, 12, 1)
 
 
-def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
+def seller_scenario(services: Services, revenue_day_offset: int = 0) -> tuple[Company, date]:
+    """Um comercial a 10% com o prazo de cadastro de um cliente (revshare de 50%) e US$ 200 de
+    receita no dia; devolve o cliente e o dia da receita."""
     today = services.clock.now().astimezone(UTC).date()
     seller = User(email="lucas@groone.com", name="Lucas")
     groone = Company(
@@ -62,7 +65,7 @@ def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
                 0,
                 None,
                 None,
-                services.clock.now(),
+                services.clock.now() - timedelta(days=60),
             )
         )
         uow.client_profiles.add(
@@ -85,7 +88,7 @@ def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
                 GamDailyMetric(
                     company_id=client.id,
                     network_id=n.id,
-                    date=today,
+                    date=today - timedelta(days=revenue_day_offset),
                     ad_unit_path="topo",
                     country_code="BR",
                     device="desktop",
@@ -96,6 +99,11 @@ def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
             ]
         )
         uow.commit()
+    return client, today - timedelta(days=revenue_day_offset)
+
+
+def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
+    client, today = seller_scenario(services)
     assert calculate_today_commissions.delay().get() == {"assigned": 1, "saved": 1}
     with services.trusted_uow() as uow:
         (window,) = uow.commission_windows.for_company(client.id)
@@ -105,9 +113,52 @@ def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
             10_000_000,
         )
     month = today.strftime("%Y-%m")
+    assert close_commissions.delay(month).get() == {"month": f"{month}-01", "waiting": 1}
+    earnings(services, client, today.replace(day=1))
     result = close_commissions.delay(month).get()
     assert result["windows"] == 1
     with services.trusted_uow() as uow:
         daily = uow.daily_commissions.get(window.id, today)
         assert daily is not None and daily.status is CommissionStatus.VALIDATED
     assert transfer_clients.delay().get() == {"moved": 0}
+
+
+def earnings(services: Services, client: Company, month: date) -> None:
+    """Grava o Mcm_Earnings do mês da network do cliente."""
+    with services.trusted_uow() as uow:
+        (n,) = uow.networks.list_for_company(client.id)
+        uow.mcm_earnings.upsert(
+            [
+                McmEarning(
+                    company_id=client.id,
+                    network_id=n.id,
+                    month=month,
+                    delegation=None,
+                    currency="USD",
+                    total_earnings_micros=0,
+                    deductions_micros=0,
+                    child_payment_micros=0,
+                    parent_payment_micros=0,
+                    synced_at=services.clock.now(),
+                )
+            ]
+        )
+        uow.commit()
+
+
+def test_the_daily_run_fills_every_open_day(services: Services) -> None:
+    client, day = seller_scenario(services, revenue_day_offset=5)
+    assert calculate_recent_commissions.delay().get()["saved"] >= 5
+    with services.trusted_uow() as uow:
+        (window,) = uow.commission_windows.for_company(client.id)
+        daily = uow.daily_commissions.get(window.id, day)
+        assert daily is not None and daily.commission_micros == 10_000_000
+
+
+def test_closing_runs_every_day_from_the_15th_to_the_20th() -> None:
+    (entry,) = [
+        item
+        for item in app.conf.beat_schedule.values()
+        if item["task"] == "avant.default.close_commissions"
+    ]
+    assert entry["schedule"].day_of_month == set(range(15, 21))

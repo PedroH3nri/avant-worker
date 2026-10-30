@@ -118,7 +118,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             },
             "commissions-close": {
                 "task": "avant.default.close_commissions",
-                "schedule": crontab(day_of_month=15, hour=5, minute=0),
+                "schedule": crontab(day_of_month="15-20", hour=5, minute=0),
             },
         },
     )
