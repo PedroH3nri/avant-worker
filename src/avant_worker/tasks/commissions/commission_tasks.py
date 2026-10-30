@@ -47,7 +47,9 @@ def _calculate(day: date | None) -> dict[str, int]:
             saved = 0
             for item in days:
                 saved += calculate_day(uow, day=item, clock=services.clock)
-                services.renew_lock("commissions", timeout=LOCK_SECONDS)
+                if not services.renew_lock("commissions", timeout=LOCK_SECONDS):
+                    log.warning("trava da comissão perdida; nada gravado", extra={"day": str(item)})
+                    return {"skipped": 1}
             uow.commit()
     log.info("comissão calculada", extra={"days": len(days), "assigned": assigned, "saved": saved})
     return {"assigned": assigned, "saved": saved}

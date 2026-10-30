@@ -188,14 +188,17 @@ class Services:
             with suppress(redis.exceptions.LockError):
                 lock.release()
 
-    def renew_lock(self, key: str, *, timeout: int) -> None:
-        """Dá mais ``timeout`` segundos à trava que esta execução segura, para um trabalho longo
-        não perder a trava no meio."""
+    def renew_lock(self, key: str, *, timeout: int) -> bool:
+        """Dá mais ``timeout`` segundos à trava que esta execução segura; ``False`` quando a trava
+        já se perdeu (venceu e outra execução pode estar rodando)."""
         lock = self._held.get(key)
         if lock is None:
-            return
-        with suppress(redis.exceptions.LockError):
+            return True
+        try:
             lock.extend(timeout, replace_ttl=True)
+        except redis.exceptions.LockError:
+            return False
+        return True
 
 
 def _mailer(settings: Settings) -> Mailer:

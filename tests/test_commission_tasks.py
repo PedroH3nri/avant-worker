@@ -223,3 +223,12 @@ def test_last_month_closes_after_its_earnings_arrive(services: Services) -> None
         (window,) = uow.commission_windows.for_company(client.id)
         daily = uow.daily_commissions.get(window.id, day)
         assert daily is not None and daily.status is CommissionStatus.VALIDATED
+
+
+def test_renewing_a_lost_lock_says_so(services: Services) -> None:
+    if services.redis is None:
+        pytest.skip("sem Redis")
+    with services.lock("teste-perdida", timeout=60) as acquired:
+        assert acquired
+        services.redis.delete("avant:lock:teste-perdida")
+        assert services.renew_lock("teste-perdida", timeout=60) is False
