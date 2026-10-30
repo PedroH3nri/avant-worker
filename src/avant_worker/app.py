@@ -40,6 +40,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.metrics.page_view_tasks",
             "avant_worker.tasks.money.exchange_rate_tasks",
             "avant_worker.tasks.metrics.mcm_earnings_tasks",
+            "avant_worker.tasks.commissions.commission_tasks",
         ],
     )
     app.conf.update(
@@ -102,6 +103,22 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "gam-import-inventory": {
                 "task": "avant.gam.schedule_imports",
                 "schedule": crontab(hour="*/6", minute=20),
+            },
+            "commissions-today": {
+                "task": "avant.default.calculate_today_commissions",
+                "schedule": crontab(minute=45),
+            },
+            "commissions-recent": {
+                "task": "avant.default.calculate_recent_commissions",
+                "schedule": crontab(hour=3, minute=0),
+            },
+            "commissions-transfer": {
+                "task": "avant.default.transfer_clients",
+                "schedule": crontab(hour=3, minute=30),
+            },
+            "commissions-close": {
+                "task": "avant.default.close_commissions",
+                "schedule": crontab(day_of_month="15-20", hour=5, minute=0),
             },
         },
     )
