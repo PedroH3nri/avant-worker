@@ -59,9 +59,9 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.sync_exchange_rates` | a cada 6 horas (minuto 50) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
 | `avant.gam.sync_mcm_earnings` | dias 15 a 20, 03:10 UTC | ganhos e deduções do MCM do mês anterior (`mcmEarnings:fetch` na network da Groone, só leitura), como o `PaymentsGamSync` do Genius; 12 meses para trás na primeira vez. Aceita `month="AAAA-MM"` para regravar um mês |
 | `avant.default.calculate_today_commissions` | a cada hora, :45 | comissão de hoje em rascunho, depois de entregar aos responsáveis os prazos sem pessoa |
-| `avant.default.calculate_recent_commissions` | 03:00 UTC | os dois dias anteriores de novo, como o Genius |
+| `avant.default.calculate_recent_commissions` | 03:00 UTC | todos os dias ainda em aberto até ontem (da data de início, ou do mês seguinte ao último fechado) |
 | `avant.default.transfer_clients` | 03:30 UTC | no fim de um prazo de cliente com transferência, passa o cliente para a pessoa do papel com menos clientes |
-| `avant.default.close_commissions` | dia 15, 05:00 UTC | fecha o mês anterior com a dedução do GAM (depois do `Mcm_Earnings` das 03:10); aceita `month="AAAA-MM"` |
+| `avant.default.close_commissions` | dias 15 a 20, 05:00 UTC | fecha o mês anterior com a dedução do GAM, só depois que o `Mcm_Earnings` do mês chegou; refazer não muda nada; no dia 20, se não fechou, registra erro; aceita `month="AAAA-MM"` |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.
