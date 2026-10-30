@@ -94,6 +94,7 @@ class Services:
         self._page_views: PageViewSource | None = self.page_views_override
         self._exchange_rates: ExchangeRateSource | None = self.exchange_rates_override
         self._earnings: EarningsSource | None = self.earnings_override
+        self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -178,12 +179,23 @@ class Services:
         if not lock.acquire():
             yield False
             return
+        self._held[key] = lock
         try:
             yield True
         finally:
+            self._held.pop(key, None)
             # Passou do tempo da trava: outra execução já pode ter pegado; não é erro.
             with suppress(redis.exceptions.LockError):
                 lock.release()
+
+    def renew_lock(self, key: str, *, timeout: int) -> None:
+        """Dá mais ``timeout`` segundos à trava que esta execução segura, para um trabalho longo
+        não perder a trava no meio."""
+        lock = self._held.get(key)
+        if lock is None:
+            return
+        with suppress(redis.exceptions.LockError):
+            lock.extend(timeout, replace_ttl=True)
 
 
 def _mailer(settings: Settings) -> Mailer:

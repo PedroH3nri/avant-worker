@@ -44,7 +44,10 @@ def _calculate(day: date | None) -> dict[str, int]:
         with uow:
             assigned = assign_pending_windows(uow)
             days = [day] if day is not None else open_days(uow, today=_today())
-            saved = sum(calculate_day(uow, day=item, clock=services.clock) for item in days)
+            saved = 0
+            for item in days:
+                saved += calculate_day(uow, day=item, clock=services.clock)
+                services.renew_lock("commissions", timeout=LOCK_SECONDS)
             uow.commit()
     log.info("comissão calculada", extra={"days": len(days), "assigned": assigned, "saved": saved})
     return {"assigned": assigned, "saved": saved}
@@ -86,10 +89,12 @@ def transfer_clients() -> dict[str, int]:
 @app.task(name="avant.default.close_commissions")
 def close_commissions(month: str | None = None) -> dict[str, int | str]:
     """trusted_uow: fecha o mês pedido (``AAAA-MM``) ou o anterior, com a dedução do GAM; espera o
-    ``Mcm_Earnings`` do mês chegar."""
+    ``Mcm_Earnings`` do mês chegar e recusa mês que ainda não acabou."""
     services = get_services()
     today = _today()
     target = date.fromisoformat(f"{month}-01") if month else previous_month(today)
+    if target >= today.replace(day=1):
+        return {"month": target.isoformat(), "refused": 1}
     with services.lock("commissions", timeout=LOCK_SECONDS) as acquired:
         if not acquired:
             _warn_if_late(today, target, "trava ocupada")
