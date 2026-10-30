@@ -1,6 +1,8 @@
+import logging
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from avant_core.access.models import Role
 from avant_core.commissions.enums import CommissionEvent, CommissionStatus
 from avant_core.commissions.models import CommissionRule, CommissionWindow
@@ -112,14 +114,6 @@ def test_today_is_calculated_and_the_month_closes(services: Services) -> None:
             100_000_000,
             10_000_000,
         )
-    month = today.strftime("%Y-%m")
-    assert close_commissions.delay(month).get() == {"month": f"{month}-01", "waiting": 1}
-    earnings(services, client, today.replace(day=1))
-    result = close_commissions.delay(month).get()
-    assert result["windows"] == 1
-    with services.trusted_uow() as uow:
-        daily = uow.daily_commissions.get(window.id, today)
-        assert daily is not None and daily.status is CommissionStatus.VALIDATED
     assert transfer_clients.delay().get() == {"moved": 0}
 
 
@@ -162,3 +156,79 @@ def test_closing_runs_every_day_from_the_15th_to_the_20th() -> None:
         if item["task"] == "avant.default.close_commissions"
     ]
     assert entry["schedule"].day_of_month == set(range(15, 21))
+
+
+def test_a_busy_lock_skips_the_run(services: Services) -> None:
+    if services.redis is None:
+        pytest.skip("sem Redis")
+    held = services.redis.lock("avant:lock:commissions", timeout=60, blocking=False)
+    assert held.acquire()
+    try:
+        assert calculate_recent_commissions.delay().get() == {"skipped": 1}
+        assert transfer_clients.delay().get() == {"skipped": 1}
+    finally:
+        held.release()
+
+
+def test_a_long_run_renews_the_lock(services: Services) -> None:
+    if services.redis is None:
+        pytest.skip("sem Redis")
+    with services.lock("teste-renova", timeout=5) as acquired:
+        assert acquired
+        services.renew_lock("teste-renova", timeout=300)
+        ttl = int(str(services.redis.pttl("avant:lock:teste-renova")))
+        assert ttl > 5_000
+
+
+def test_closing_warns_on_the_20th_when_the_month_is_still_open(
+    services: Services, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.ERROR, logger="avant.worker.commissions")
+    real = services.clock
+    services.clock = FixedClock(datetime(2026, 11, 20, 5, tzinfo=UTC))
+    try:
+        assert close_commissions.delay().get() == {"month": "2026-10-01", "waiting": 1}
+    finally:
+        services.clock = real
+    assert any("não fechou" in record.message for record in caplog.records)
+
+
+def test_closing_the_current_month_is_refused(services: Services) -> None:
+    client, today = seller_scenario(services)
+    earnings(services, client, today.replace(day=1))
+    month = today.strftime("%Y-%m")
+    assert close_commissions.delay(month).get() == {"month": f"{month}-01", "refused": 1}
+
+
+class FixedClock:
+    """Relógio parado num instante, para os testes de data."""
+
+    def __init__(self, instant: datetime) -> None:
+        self.instant = instant
+
+    def now(self) -> datetime:
+        return self.instant
+
+
+def test_last_month_closes_after_its_earnings_arrive(services: Services) -> None:
+    today = services.clock.now().astimezone(UTC).date()
+    client, day = seller_scenario(services, revenue_day_offset=today.day)
+    calculate_recent_commissions.delay().get()
+    month = day.strftime("%Y-%m")
+    assert close_commissions.delay(month).get() == {"month": f"{month}-01", "waiting": 1}
+    earnings(services, client, day.replace(day=1))
+    result = close_commissions.delay(month).get()
+    assert result["windows"] == 1
+    with services.trusted_uow() as uow:
+        (window,) = uow.commission_windows.for_company(client.id)
+        daily = uow.daily_commissions.get(window.id, day)
+        assert daily is not None and daily.status is CommissionStatus.VALIDATED
+
+
+def test_renewing_a_lost_lock_says_so(services: Services) -> None:
+    if services.redis is None:
+        pytest.skip("sem Redis")
+    with services.lock("teste-perdida", timeout=60) as acquired:
+        assert acquired
+        services.redis.delete("avant:lock:teste-perdida")
+        assert services.renew_lock("teste-perdida", timeout=60) is False
