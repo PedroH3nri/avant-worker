@@ -54,6 +54,8 @@ TABLES = (
     "networks",
     "mcm_candidates",
     "audit_logs",
+    "saved_report_pins",
+    "saved_reports",
     "companies",
     "sessions",
     "password_resets",
