@@ -16,9 +16,8 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-# Sempre por tag: atualizar o avant-core é uma mudança explícita neste repositório. Fixado
-# no commit do pre-develop do avant-core até a tag v0.51.0 sair no develop.
-avant-core = { git = "https://github.com/PedroH3nri/avant-core", rev = "1c3f55ed91b488a1a77c5228f96d104179c3a2e8" }
+# Sempre por tag: atualizar o avant-core é uma mudança explícita neste repositório.
+avant-core = { git = "https://github.com/PedroH3nri/avant-core", tag = "v0.51.0" }
 
 [dependency-groups]
 dev = [
