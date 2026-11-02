@@ -39,7 +39,7 @@ O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
 A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 
 - `default`: limpeza e o resto.
-- `mail`: e-mails (por enquanto a API manda direto, depois do commit).
+- `mail`: e-mails (os avisos dos alertas; os da API saem direto, depois do commit).
 - `gam`: Google Ad Manager, que tem cota própria e não pode travar as outras filas.
 
 | Tarefa | Quando | Faz |
@@ -62,6 +62,9 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.calculate_recent_commissions` | 03:00 UTC | todos os dias ainda em aberto até ontem (da data de início, ou do mês seguinte ao último fechado) |
 | `avant.default.transfer_clients` | 03:30 UTC | no fim de um prazo de cliente com transferência, passa o cliente para a pessoa do papel com menos clientes |
 | `avant.default.close_commissions` | dias 15 a 20, 05:00 UTC | fecha o mês anterior com a dedução do GAM, só depois que o `Mcm_Earnings` do mês chegou; refazer não muda nada; no dia 20, se não fechou, registra erro; aceita `month="AAAA-MM"` |
+| `avant.default.schedule_alerts` | de hora em hora (minuto 50) | pede uma `avant.default.check_alerts` por Empresa que tem alerta de métrica |
+| `avant.default.check_alerts(company_id)` | pelo agendador acima | confere os alertas da Empresa (último dia fechado, como o dono do alerta) e grava os disparos; pede `avant.mail.notify_alerts` |
+| `avant.mail.notify_alerts(company_id)` | depois da conferência | um e-mail por alerta e dia para cada pessoa da lista, só dos disparos ainda sem aviso |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.
