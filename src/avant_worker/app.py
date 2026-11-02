@@ -42,6 +42,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.metrics.mcm_earnings_tasks",
             "avant_worker.tasks.commissions.commission_tasks",
             "avant_worker.tasks.reports.report_preview_tasks",
+            "avant_worker.tasks.alerts.alert_tasks",
         ],
     )
     app.conf.update(
@@ -96,6 +97,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "gam-sync-metrics": {
                 "task": "avant.gam.schedule_metrics",
                 "schedule": crontab(minute=35),
+            },
+            "alerts-check": {
+                "task": "avant.default.schedule_alerts",
+                "schedule": crontab(minute=50),
             },
             "report-previews": {
                 "task": "avant.default.refresh_report_previews",
