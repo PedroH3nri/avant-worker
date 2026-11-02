@@ -39,7 +39,7 @@ O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
 A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 
 - `default`: limpeza e o resto.
-- `mail`: e-mails (os avisos dos alertas; os da API saem direto, depois do commit).
+- `mail`: e-mails (os avisos dos alertas e os envios agendados; os da API saem direto, depois do commit).
 - `gam`: Google Ad Manager, que tem cota própria e não pode travar as outras filas.
 
 | Tarefa | Quando | Faz |
@@ -65,6 +65,8 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.schedule_alerts` | de hora em hora (minuto 50) | pede uma `avant.default.check_alerts` por Empresa que tem alerta de métrica |
 | `avant.default.check_alerts(company_id)` | pelo agendador acima | confere os alertas da Empresa (último dia fechado, como o dono do alerta) e grava os disparos; pede `avant.mail.notify_alerts` |
 | `avant.mail.notify_alerts(company_id)` | depois da conferência | um e-mail por alerta e dia para cada pessoa da lista, só dos disparos ainda sem aviso |
+| `avant.default.schedule_reports` | de hora em hora (minuto 2) | pede uma `avant.mail.deliver_reports` por Empresa com envio agendado na hora |
+| `avant.mail.deliver_reports(company_id)` | pelo agendador acima | roda o relatório ou o dashboard como cada pessoa da lista e manda o resumo com o CSV anexo; marca o horário antes de mandar, sem repetir |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.

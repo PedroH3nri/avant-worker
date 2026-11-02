@@ -118,6 +118,14 @@ class Services:
         """Sem RLS: só para limpeza e para varrer todas as Empresas."""
         return SqlAlchemyUnitOfWork(self.engine, bypass_rls=True)
 
+    def report_uow(self, company_id: uuid.UUID) -> SqlAlchemyUnitOfWork:
+        """O Unit of Work de quem roda relatórios da Empresa: com RLS na Empresa cliente e sem
+        RLS na Company Groone, cujos relatórios somam as Empresas cliente."""
+        with self.trusted_uow() as uow:
+            company = uow.companies.get(company_id)
+            internal = company is not None and company.is_internal
+        return self.trusted_uow() if internal else self.uow(company_id)
+
     @property
     def gam(self) -> Gam:
         """Monta o cliente do GAM na primeira vez que é usado; só a fila gam tem a chave."""

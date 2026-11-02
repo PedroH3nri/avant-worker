@@ -185,8 +185,8 @@ wheels = [
 
 [[package]]
 name = "avant-core"
-version = "0.55.0"
-source = { git = "https://github.com/PedroH3nri/avant-core?tag=v0.55.0#8b5b402a1962bc8969c93790f34f19e1fbba51b4" }
+version = "0.56.0"
+source = { git = "https://github.com/PedroH3nri/avant-core?tag=v0.56.0#a53f59b180a6354c82fd492ec9007ffbad021623" }
 dependencies = [
     { name = "alembic" },
     { name = "argon2-cffi" },
@@ -195,6 +195,7 @@ dependencies = [
     { name = "prometheus-client" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
+    { name = "tzdata" },
 ]
 
 [[package]]
@@ -222,7 +223,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "avant-core", git = "https://github.com/PedroH3nri/avant-core?tag=v0.55.0" },
+    { name = "avant-core", git = "https://github.com/PedroH3nri/avant-core?tag=v0.56.0" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4,<6" },
     { name = "google-auth", specifier = ">=2.35" },
     { name = "googleads", specifier = ">=50" },
