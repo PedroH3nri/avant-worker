@@ -55,6 +55,8 @@ TABLES = (
     "mcm_candidates",
     "audit_logs",
     "alert_events",
+    "schedule_deliveries",
+    "report_schedules",
     "metric_alerts",
     "saved_report_pins",
     "saved_reports",
