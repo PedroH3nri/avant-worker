@@ -7,6 +7,7 @@ from avant_core.metrics.enums import MetricSource, RelativePeriod
 from avant_core.metrics.models import Period, QueryDefinition
 from avant_core.metrics.services import encode_query
 from avant_core.ports import Notice
+from avant_core.schedules.models import ScheduledReportMail
 
 from avant_worker.app import _route, app
 from avant_worker.services import Services
@@ -16,9 +17,10 @@ from tests.test_gam_tasks import company
 
 @dataclass
 class RecordingMailer:
-    """Guarda os avisos dos alertas que sairiam."""
+    """Guarda os avisos dos alertas e os envios agendados que sairiam."""
 
     alerts: list[tuple[str, AlertMail]] = field(default_factory=list)
+    reports: list[tuple[str, ScheduledReportMail]] = field(default_factory=list)
 
     def send_invitation(
         self, *, to: str, token: str, kind: InvitationKind, company_name: str | None, locale: str
@@ -36,6 +38,10 @@ class RecordingMailer:
     def send_metric_alert(self, *, to: str, locale: str, alert: AlertMail) -> None:
         """Guarda o aviso do alerta."""
         self.alerts.append((to, alert))
+
+    def send_scheduled_report(self, *, to: str, locale: str, report: ScheduledReportMail) -> None:
+        """Guarda o envio agendado."""
+        self.reports.append((to, report))
 
 
 def test_alert_tasks_are_registered_on_their_queues() -> None:

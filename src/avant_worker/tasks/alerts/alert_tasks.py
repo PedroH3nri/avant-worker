@@ -20,10 +20,9 @@ from avant_core.alerts.services import (
     evaluate_company_alerts,
     notify_alert_events,
 )
-from avant_core.db.uow import SqlAlchemyUnitOfWork
 
 from avant_worker.app import app
-from avant_worker.services import Services, get_services
+from avant_worker.services import get_services
 
 log = logging.getLogger("avant.worker.alerts")
 
@@ -50,7 +49,7 @@ def check_alerts(company_id: str) -> dict[str, int]:
         if not acquired:
             return {"skipped": 1}
         run = evaluate_company_alerts(
-            _company_uow(services, target), company_id=target, clock=services.clock
+            services.report_uow(target), company_id=target, clock=services.clock
         )
     if run.alerts:
         notify_alerts.delay(company_id)
@@ -81,18 +80,10 @@ def notify_alerts(company_id: str) -> dict[str, int]:
         if not acquired:
             return {"skipped": 1}
         sent = notify_alert_events(
-            _company_uow(services, target),
+            services.report_uow(target),
             company_id=target,
             mailer=services.mailer,
             clock=services.clock,
         )
     log.info("avisos dos alertas enviados", extra={"company_id": company_id, "sent": sent})
     return {"sent": sent}
-
-
-def _company_uow(services: Services, company_id: uuid.UUID) -> SqlAlchemyUnitOfWork:
-    """O Unit of Work da Empresa; o da Groone vem sem RLS para ler as Empresas cliente."""
-    with services.trusted_uow() as uow:
-        company = uow.companies.get(company_id)
-        internal = company is not None and company.is_internal
-    return services.trusted_uow() if internal else services.uow(company_id)
