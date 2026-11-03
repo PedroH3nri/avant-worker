@@ -44,6 +44,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.reports.report_preview_tasks",
             "avant_worker.tasks.alerts.alert_tasks",
             "avant_worker.tasks.schedules.schedule_tasks",
+            "avant_worker.tasks.checklists.checklist_tasks",
         ],
     )
     app.conf.update(
@@ -130,6 +131,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "commissions-transfer": {
                 "task": "avant.default.transfer_clients",
                 "schedule": crontab(hour=3, minute=30),
+            },
+            "checklists-open": {
+                "task": "avant.default.open_checklists",
+                "schedule": crontab(hour=3, minute=15),
             },
             "commissions-close": {
                 "task": "avant.default.close_commissions",

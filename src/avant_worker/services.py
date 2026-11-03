@@ -21,11 +21,13 @@ from avant_core.mail import LogMailer, ResendMailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
+from avant_core.site_checklists.interfaces import PageFetcher
 from sqlalchemy import Engine, create_engine
 
 from avant_worker.adapters.exchange_rates import OpenExchangeRates
 from avant_worker.adapters.gam_client import RestGamClient
 from avant_worker.adapters.gam_reports import ReportKind, SoapReportClient
+from avant_worker.adapters.page_fetcher import HttpPageFetcher
 from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
 
@@ -85,6 +87,7 @@ class Services:
     page_views_override: "PageViewSource | None" = None
     exchange_rates_override: "ExchangeRateSource | None" = None
     earnings_override: "EarningsSource | None" = None
+    page_fetcher_override: "PageFetcher | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -94,6 +97,7 @@ class Services:
         self._page_views: PageViewSource | None = self.page_views_override
         self._exchange_rates: ExchangeRateSource | None = self.exchange_rates_override
         self._earnings: EarningsSource | None = self.earnings_override
+        self._page_fetcher: PageFetcher | None = self.page_fetcher_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -176,6 +180,13 @@ class Services:
         if self._exchange_rates is None and self.settings.openexchangerates_app_id:
             self._exchange_rates = OpenExchangeRates(self.settings.openexchangerates_app_id)
         return self._exchange_rates
+
+    @property
+    def page_fetcher(self) -> "PageFetcher":
+        """Busca as páginas dos sites para o checklist de domínio."""
+        if self._page_fetcher is None:
+            self._page_fetcher = HttpPageFetcher()
+        return self._page_fetcher
 
     @contextmanager
     def lock(self, key: str, *, timeout: int) -> Iterator[bool]:
