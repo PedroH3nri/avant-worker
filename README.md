@@ -64,6 +64,8 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.close_commissions` | dias 15 a 20, 05:00 UTC | fecha o mês anterior com a dedução do GAM, só depois que o `Mcm_Earnings` do mês chegou; refazer não muda nada; no dia 20, se não fechou, registra erro; aceita `month="AAAA-MM"` |
 | `avant.default.schedule_alerts` | de hora em hora (minuto 50) | pede uma `avant.default.check_alerts` por Empresa que tem alerta de métrica |
 | `avant.default.check_alerts(company_id)` | pelo agendador acima | confere os alertas da Empresa (último dia fechado, como o dono do alerta) e grava os disparos; pede `avant.mail.notify_alerts` |
+| `avant.default.open_checklists` | todo dia às 03:15 | abre o checklist de domínio do mês com os sites que faturaram no mês anterior (no dia 1 cria; depois só pega o que ficou sem conferir) e pede uma `avant.default.check_checklist` por site, a cada 5 s |
+| `avant.default.check_checklist(checklist_id)` | pelo agendador acima e pelo "Conferir agora" do painel | busca a página inicial, um artigo e o `ads.txt` do site (GET, sem JavaScript, User-Agent `AvantChecklist/1.0`, 10 s, até 2 MB, 1 pedido por segundo por domínio) e grava o resultado de cada item automático |
 | `avant.mail.notify_alerts(company_id)` | depois da conferência | um e-mail por alerta e dia para cada pessoa da lista, só dos disparos ainda sem aviso |
 | `avant.default.schedule_reports` | de hora em hora (minuto 2) | pede uma `avant.mail.deliver_reports` por Empresa com envio agendado na hora |
 | `avant.mail.deliver_reports(company_id)` | pelo agendador acima | roda o relatório ou o dashboard como cada pessoa da lista e manda o resumo com o CSV anexo; marca o horário antes de mandar, sem repetir |
