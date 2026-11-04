@@ -14,7 +14,7 @@ from avant_core.identity.models import User
 from avant_worker.adapters.gam_writer import SoapGamWriter, _ad_unit, _line_item
 from avant_worker.app import _route, app
 from avant_worker.services import Services
-from avant_worker.tasks.gam import run_tool
+from avant_worker.tasks.gam import run_tool, tool_tasks
 from tests.test_gam_tasks import company, network
 
 
@@ -246,3 +246,30 @@ def test_writer_reads_seller_in_groone_network(seller: str | None) -> None:
     company_row = {"childPublisher": {"sellerId": seller}}
     writer, _client = soap_writer({"getCompaniesByStatement": {"results": [company_row]}})
     assert writer.seller_id("123", "9999") == seller
+
+
+def test_a_busy_network_waits_and_tries_again(services: Services, monkeypatch: Any) -> None:
+    if services.redis is None:
+        pytest.skip("sem Redis")
+    services.settings.gam_groone_network_code = "9999"
+    actor = staff(services)
+    client = company(services)
+    net = network(services, client)
+    run = start_gam_tool(
+        services.trusted_uow(),
+        actor=actor,
+        network_id=net.id,
+        kind=GamToolKind.SYNC,
+        clock=services.clock,
+    )
+    later: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        tool_tasks, "_try_later", lambda run_id, attempt: later.append((run_id, attempt))
+    )
+    held = services.redis.lock(f"avant:lock:gam:tool:network:{net.id}", timeout=60, blocking=False)
+    assert held.acquire()
+    try:
+        assert run_tool.delay(str(run.id)).get() == {"skipped": "network_busy"}
+    finally:
+        held.release()
+    assert later == [(str(run.id), 1)]
