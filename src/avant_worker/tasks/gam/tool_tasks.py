@@ -12,7 +12,9 @@ Sem retry automático: uma escrita que falhou fica registrada no passo e a pesso
 novo. Uma reentrega (``acks_late``) retoma do passo que parou; todo passo confere o GAM antes
 de criar, então nada se duplica. A trava no Redis é por network e renovada a cada passo: duas
 execuções nunca escrevem na mesma network juntas. Com a network ocupada, a tarefa tenta de novo
-daqui a um minuto; a execução antiga que perdeu o lugar para no próximo passo (avant-core).
+daqui a um minuto; a execução antiga que perdeu o lugar para no próximo passo (avant-core
+v0.65.0). Depois de 60 tentativas a tarefa desiste e a execução fica rodando até passar do
+``STALE_AFTER``; aí a pessoa pode rodar de novo.
 """
 
 import logging
