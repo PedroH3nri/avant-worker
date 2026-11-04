@@ -12,6 +12,7 @@ import logging
 import uuid
 
 from avant_core.reports.services import refresh_preview, stale_report_ids
+from celery.exceptions import SoftTimeLimitExceeded
 
 from avant_worker.app import app
 from avant_worker.services import get_services
@@ -48,6 +49,8 @@ def refresh_report_previews() -> dict[str, int]:
                         services.trusted_uow(), report_id=report_id, clock=services.clock
                     )
                 )
+            except SoftTimeLimitExceeded:
+                raise
             except Exception:
                 log.exception("miniatura do relatório falhou", extra={"report_id": str(report_id)})
     log.info("miniaturas refeitas", extra={"stale": len(ids), "refreshed": refreshed})
