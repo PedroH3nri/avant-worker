@@ -69,3 +69,7 @@ def test_report_previews_stop_at_the_soft_limit(services: Services) -> None:
         pytest.raises(SoftTimeLimitExceeded),
     ):
         report_preview_tasks.refresh_report_previews.run()
+
+
+def test_task_results_are_not_kept_in_redis() -> None:
+    assert app.conf.task_ignore_result is True

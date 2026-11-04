@@ -52,6 +52,9 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
         broker_url=broker_settings.celery_broker_url,
         result_backend=broker_settings.redis_url,
         result_expires=24 * 3600,
+        # Ninguém lê o resultado das tarefas (a API só enfileira): não guarda no Redis, que fica
+        # para travas, limites e eventos. O resultado com erro continua indo para os logs.
+        task_ignore_result=True,
         task_serializer="json",
         result_serializer="json",
         accept_content=["json"],
