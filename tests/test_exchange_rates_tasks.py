@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -7,6 +8,7 @@ from sqlalchemy import text
 
 from avant_worker.adapters import ExchangeRatesUnavailable, OpenExchangeRates
 from avant_worker.app import _route, app
+from avant_worker.logs import configure_logging
 from avant_worker.services import Services
 from avant_worker.tasks.money import closed_days_to_fetch, sync_exchange_rates
 from avant_worker.tasks.money.exchange_rate_tasks import BACKFILL_DAYS
@@ -26,7 +28,8 @@ def test_closed_days_backfill_then_only_what_is_missing() -> None:
 
 def test_client_reads_rates_as_decimals_and_fails_clearly() -> None:
     def reply(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["app_id"] == "chave"
+        assert "app_id" not in request.url.params and "chave" not in str(request.url)
+        assert request.headers["Authorization"] == "Token chave"
         assert "BRL" in request.url.params["symbols"]
         if request.url.path.endswith("2026-11-01.json"):
             return httpx.Response(200, text='{"base": "USD", "rates": {"BRL": 5.3123, "USD": 1}}')
@@ -73,3 +76,9 @@ def test_sync_stores_closed_days_and_today(services: Services) -> None:
 def test_sync_without_key_does_nothing(services: Services) -> None:
     services._exchange_rates = None
     assert sync_exchange_rates.delay().get() == {"skipped": "not_configured"}
+
+
+def test_http_client_logs_do_not_carry_request_urls() -> None:
+    configure_logging("INFO")
+    assert logging.getLogger("httpx").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("httpcore").getEffectiveLevel() == logging.WARNING

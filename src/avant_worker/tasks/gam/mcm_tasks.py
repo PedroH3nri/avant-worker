@@ -45,7 +45,12 @@ def discover_mcm() -> dict[str, int]:
         "disconnected": found.disconnected,
         "updated": found.updated,
     }
-    log.info("descoberta do MCM", extra=counts)
+    log.info(
+        "descoberta do MCM",
+        extra={
+            key if key != "created" else "networks_created": value for key, value in counts.items()
+        },
+    )
     return counts
 
 

@@ -1,6 +1,7 @@
 """Cotações de cada dia no Open Exchange Rates (base USD), como o CurrenciesSync do Genius.
 
-A chave (``OPENEXCHANGERATES_APP_ID``) fica só nas VMs. ``latest`` é a cotação de agora e
+A chave (``OPENEXCHANGERATES_APP_ID``) fica só nas VMs e vai no cabeçalho ``Authorization``,
+nunca na URL, que aparece em logs e stack traces. ``latest`` é a cotação de agora e
 ``historical`` a do fim de um dia já fechado.
 """
 
@@ -38,7 +39,11 @@ class OpenExchangeRates:
     def _rates(self, path: str) -> dict[str, Decimal]:
         """Pede as cotações e lê os números como Decimal, sem passar por float."""
         try:
-            response = self._http.get(path, params={"app_id": self._app_id, "symbols": SYMBOLS})
+            response = self._http.get(
+                path,
+                params={"symbols": SYMBOLS},
+                headers={"Authorization": f"Token {self._app_id}"},
+            )
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise ExchangeRatesUnavailable(f"Open Exchange Rates falhou: {path}") from exc
