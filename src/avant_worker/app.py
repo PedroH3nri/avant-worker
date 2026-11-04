@@ -62,6 +62,12 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
+        # O RabbitMQ devolve a mensagem que fica 30 minutos sem ack: toda tarefa termina antes.
+        # As que têm trava mais curta definem limites próprios, sempre abaixo da trava.
+        task_soft_time_limit=20 * 60,
+        task_time_limit=25 * 60,
+        # Reinicia o processo que passar de 500 MB (relatórios grandes do GAM).
+        worker_max_memory_per_child=500_000,
         task_default_queue="default",
         task_routes=(_route,),
         # Eventos para o celery-exporter (métricas no Prometheus).
