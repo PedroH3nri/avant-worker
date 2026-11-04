@@ -26,11 +26,18 @@ from avant_worker.services import get_services
 log = logging.getLogger("avant.worker.page_views")
 
 LOCK_SECONDS = 10 * 60
+# Abaixo da trava de 10 minutos.
+SOFT_LIMIT_SECONDS = 8 * 60
+HARD_LIMIT_SECONDS = 9 * 60
 
 DATA_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 
-@app.task(name="avant.default.sync_page_views")
+@app.task(
+    name="avant.default.sync_page_views",
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def sync_page_views(company_id: str, network_id: str, start: str, end: str) -> dict[str, Any]:
     """Grava as visitas da network entre ``start`` e ``end`` (datas ISO, inclusive)."""
     services = get_services()
@@ -64,7 +71,11 @@ def sync_page_views(company_id: str, network_id: str, start: str, end: str) -> d
     return result
 
 
-@app.task(name="avant.default.schedule_page_views")
+@app.task(
+    name="avant.default.schedule_page_views",
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def schedule_page_views() -> int:
     """trusted_uow: ontem e hoje (São Paulo) de cada network ativa; devolve quantas."""
     services = get_services()

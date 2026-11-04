@@ -27,9 +27,16 @@ from avant_worker.services import get_services
 log = logging.getLogger("avant.worker.alerts")
 
 LOCK_SECONDS = 15 * 60
+# Abaixo da trava de 15 minutos.
+SOFT_LIMIT_SECONDS = 12 * 60
+HARD_LIMIT_SECONDS = 14 * 60
 
 
-@app.task(name="avant.default.schedule_alerts")
+@app.task(
+    name="avant.default.schedule_alerts",
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def schedule_alerts() -> dict[str, int]:
     """trusted_uow: pede a conferência dos alertas de cada Empresa que tem algum."""
     services = get_services()
@@ -40,7 +47,11 @@ def schedule_alerts() -> dict[str, int]:
     return {"companies": len(company_ids)}
 
 
-@app.task(name="avant.default.check_alerts")
+@app.task(
+    name="avant.default.check_alerts",
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def check_alerts(company_id: str) -> dict[str, int]:
     """Confere os alertas da Empresa, grava os disparos e pede o envio dos avisos."""
     services = get_services()
@@ -71,7 +82,11 @@ def check_alerts(company_id: str) -> dict[str, int]:
     }
 
 
-@app.task(name="avant.mail.notify_alerts")
+@app.task(
+    name="avant.mail.notify_alerts",
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def notify_alerts(company_id: str) -> dict[str, int]:
     """Manda por e-mail os disparos da Empresa ainda sem aviso."""
     services = get_services()
