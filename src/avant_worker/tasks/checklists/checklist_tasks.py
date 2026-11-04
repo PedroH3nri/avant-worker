@@ -21,21 +21,34 @@ from avant_worker.services import get_services
 log = logging.getLogger("avant.worker.checklists")
 
 LOCK_SECONDS = 5 * 60
-SPACING_SECONDS = 5
+# Abaixo da trava de 5 minutos.
+SOFT_LIMIT_SECONDS = 4 * 60
+HARD_LIMIT_SECONDS = 4 * 60 + 30
+# Espalha as conferências sem ETAs longas, que passariam do prazo de ack do RabbitMQ.
+CHECKS_PER_MINUTE = "12/m"
 
 
-@app.task(name="avant.default.open_checklists")
+@app.task(
+    name="avant.default.open_checklists",
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def open_checklists() -> dict[str, int]:
     """trusted_uow: abre o mês e pede a conferência dos checklists ainda não conferidos."""
     services = get_services()
     checklist_ids = open_checklist_month(services.trusted_uow(), clock=services.clock)
-    for index, checklist_id in enumerate(checklist_ids):
-        check_checklist.apply_async(args=(str(checklist_id),), countdown=index * SPACING_SECONDS)
+    for checklist_id in checklist_ids:
+        check_checklist.apply_async(args=(str(checklist_id),))
     log.info("checklists abertos", extra={"to_check": len(checklist_ids)})
     return {"to_check": len(checklist_ids)}
 
 
-@app.task(name="avant.default.check_checklist")
+@app.task(
+    name="avant.default.check_checklist",
+    rate_limit=CHECKS_PER_MINUTE,
+    soft_time_limit=SOFT_LIMIT_SECONDS,
+    time_limit=HARD_LIMIT_SECONDS,
+)
 def check_checklist(checklist_id: str) -> dict[str, int]:
     """trusted_uow: confere o site do checklist e grava o resultado de cada item."""
     services = get_services()
