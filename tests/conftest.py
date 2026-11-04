@@ -33,6 +33,7 @@ OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "gam_tool_runs",
     "daily_commissions",
     "commission_deductions",
     "commission_adjustments",

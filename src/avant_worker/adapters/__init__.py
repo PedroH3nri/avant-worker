@@ -1,5 +1,5 @@
-"""Adaptadores do worker: GAM (REST e relatórios SOAP), visitas do data, cotações, eventos e as
-páginas dos sites (checklist)."""
+"""Adaptadores do worker: GAM (REST, relatórios SOAP e as escritas SOAP das ferramentas),
+visitas do data, cotações, eventos e as páginas dos sites (checklist)."""
 
 from avant_worker.adapters.events import channel, publish
 from avant_worker.adapters.exchange_rates import ExchangeRatesUnavailable, OpenExchangeRates
@@ -10,6 +10,7 @@ from avant_worker.adapters.gam_reports import (
     parse_report,
     report_query,
 )
+from avant_worker.adapters.gam_writer import SoapGamWriter
 from avant_worker.adapters.page_fetcher import HttpPageFetcher
 from avant_worker.adapters.page_views import MongoPageViews, parse_documents
 
@@ -20,6 +21,7 @@ __all__ = [
     "OpenExchangeRates",
     "ReportKind",
     "RestGamClient",
+    "SoapGamWriter",
     "SoapReportClient",
     "channel",
     "parse_documents",

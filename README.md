@@ -48,6 +48,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.gam.discover_mcm` | de hora em hora (minuto 5) | lê os child publishers da network da Groone: liga networks novas à Empresa do dono, guarda o MCM sem dono e desconecta o que foi encerrado |
 | `avant.gam.sync_contracts` | de hora em hora (minuto 10) | lê o revshare aprovado de cada child publisher MCM Manage Account e, quando muda, encerra o contrato ativo da network e cria outro |
 | `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem |
+| `avant.gam.run_tool(run_id)` | quando a API abre uma execução das ferramentas do GAM | roda a configuração completa, o setup de anúncio, os key values ou o "Sincronizar agora" passo a passo (`execute_gam_tool` do core, escritas por SOAP em `adapters/gam_writer.py`, o único arquivo que escreve no GAM); avisa o painel interno com `gam_tool_run.updated`; sem retry automático |
 | `avant.gam.schedule_tests` | todo dia às 03:00 UTC | uma `avant.gam.check_access` por network ativa |
 | `avant.gam.schedule_imports` | de 6 em 6 horas (minuto 20) | uma `avant.gam.sync_network(test=False)` por network ativa |
 | `avant.gam.sync_metrics(company_id, network_id, start, end)` | pelos agendadores abaixo | relatórios por ad unit e por key-value do período (SOAP, só leitura), gravados com upsert em `metrics.*`; avisa o painel com `metrics.updated` |

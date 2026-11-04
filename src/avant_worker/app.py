@@ -36,6 +36,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.maintenance.purge_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
+            "avant_worker.tasks.gam.tool_tasks",
             "avant_worker.tasks.metrics.gam_metrics_tasks",
             "avant_worker.tasks.metrics.page_view_tasks",
             "avant_worker.tasks.money.exchange_rate_tasks",
