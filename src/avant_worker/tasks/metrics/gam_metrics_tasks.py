@@ -6,12 +6,13 @@
   é parcial e é regravado a cada hora.
 - ``schedule_reprocess``: todo dia, os três dias antes de ontem, porque o GAM ajusta os
   números depois.
-- ``backfill_metrics``: histórico de uma network nova, em lotes de 7 dias encadeados (um
-  depois do outro), do mais novo para o mais antigo.
+- ``backfill_metrics``: histórico de uma network nova, em lotes de 7 dias independentes, do
+  mais novo para o mais antigo: um lote que falha não impede os outros.
 
 Com a trava da network ocupada, o lote volta para a fila daqui a um minuto em vez de ser
 descartado: senão a sincronia e o reprocessamento da mesma network, ou dois lotes do
-histórico, deixavam buracos sem erro.
+histórico, deixavam buracos sem erro. O prazo cobre a fila inteira do histórico, com cada lote
+segurando a trava por até 30 minutos.
 
 Só networks com o inventário na própria network (M.A e conexão manual). As do MCM Manage
 Inventory ficam na network da Groone e entram numa tarefa própria, que lê um relatório só
@@ -33,7 +34,6 @@ from avant_core.gam.networks.enums import ConnectionType, Delegation
 from avant_core.gam.networks.models import Network
 from avant_core.gam.sync.services import sync_service
 from avant_core.metrics.services import StoredMetrics, store_gam_report
-from celery import chain
 
 from avant_worker.adapters.events import METRICS_UPDATED, publish
 from avant_worker.adapters.gam_reports import ReportKind
@@ -50,10 +50,10 @@ BACKFILL_CHUNK_DAYS = 7
 
 REPROCESS_DAYS = 3
 
-# Com a network ocupada, tenta de novo a cada minuto por até duas horas.
+# Com a network ocupada, tenta de novo a cada minuto por até oito horas.
 LOCK_RETRY_SECONDS = 60
 
-MAX_LOCK_ATTEMPTS = 120
+MAX_LOCK_ATTEMPTS = 480
 
 RETRY_FOR = (GamUnavailable,)
 
@@ -129,28 +129,17 @@ def _try_later(company_id: str, network_id: str, start: str, end: str, attempt: 
 
 @app.task(name="avant.gam.backfill_metrics")
 def backfill_metrics(company_id: str, network_id: str, days: int = BACKFILL_DAYS) -> int:
-    """Encadeia o histórico da network em lotes, um depois do outro; devolve quantos lotes."""
+    """Enfileira o histórico da network em lotes independentes; devolve quantos lotes."""
     today = get_services().clock.now().date()
-    periods: list[tuple[date, date]] = []
+    chunks = 0
     chunk_end = today - timedelta(days=1)
     first_day = today - timedelta(days=days)
     while chunk_end >= first_day:
         chunk_start = max(first_day, chunk_end - timedelta(days=BACKFILL_CHUNK_DAYS - 1))
-        periods.append((chunk_start, chunk_end))
+        sync_metrics.delay(company_id, network_id, chunk_start.isoformat(), chunk_end.isoformat())
+        chunks += 1
         chunk_end = chunk_start - timedelta(days=1)
-    if periods:
-        _chunks_chain(company_id, network_id, periods).apply_async()
-    return len(periods)
-
-
-def _chunks_chain(company_id: str, network_id: str, periods: list[tuple[date, date]]) -> chain:
-    """Os lotes do histórico encadeados, para não disputarem a trava da network entre si."""
-    return chain(
-        *[
-            sync_metrics.si(company_id, network_id, start.isoformat(), end.isoformat())
-            for start, end in periods
-        ]
-    )
+    return chunks
 
 
 @app.task(name="avant.gam.schedule_metrics")
