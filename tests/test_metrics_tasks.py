@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from typing import Any
 
+import pytest
 from avant_core.gam.client.errors import GamAccessDenied, GamUnavailable
 from avant_core.gam.networks.enums import ConnectionType, Delegation
 from avant_core.gam.networks.models import Network
@@ -13,6 +14,7 @@ from avant_worker.services import Services
 from avant_worker.tasks.gam import sync_network
 from avant_worker.tasks.metrics import (
     backfill_metrics,
+    gam_metrics_tasks,
     schedule_metrics,
     schedule_reprocess,
     sync_metrics,
@@ -163,3 +165,55 @@ def test_schedules_cover_today_and_the_reprocess_window(services: Services) -> N
     periods = {(call[2], call[3]) for call in reports(services).calls}
     assert (today - timedelta(days=1), today) in periods
     assert (today - timedelta(days=4), today - timedelta(days=2)) in periods
+
+
+def test_locked_chunk_goes_back_to_the_queue(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = company(services)
+    connected = network(services, owner)
+    later: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        gam_metrics_tasks,
+        "_try_later",
+        lambda *args: later.append(tuple(str(arg) for arg in args)),
+    )
+    assert services.redis is not None
+    held = services.redis.lock(f"avant:lock:gam:metrics:{connected.id}", timeout=60, blocking=False)
+    assert held.acquire()
+    try:
+        first = sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-07")
+        assert first.get() == {"skipped": "locked", "attempt": 1}
+        last = sync_metrics.delay(
+            str(owner.id),
+            str(connected.id),
+            "2026-11-01",
+            "2026-11-07",
+            gam_metrics_tasks.MAX_LOCK_ATTEMPTS,
+        )
+        assert last.get() == {"skipped": "locked"}
+    finally:
+        held.release()
+    assert later == [(str(owner.id), str(connected.id), "2026-11-01", "2026-11-07", "1")]
+    assert reports(services).calls == []
+
+
+def test_a_failing_chunk_does_not_stop_the_rest_of_the_history(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = company(services)
+    connected = network(services, owner)
+    source = reports(services)
+    original = source.report
+    failed: list[bool] = []
+
+    def report_once_broken(*args: Any) -> Any:
+        """O primeiro relatório quebra com um erro inesperado; os outros saem normais."""
+        if not failed:
+            failed.append(True)
+            raise RuntimeError("banco fora do ar")
+        return original(*args)
+
+    monkeypatch.setattr(source, "report", report_once_broken)
+    assert backfill_metrics.delay(str(owner.id), str(connected.id), days=15).get() == 3
+    assert len(source.calls) == 4

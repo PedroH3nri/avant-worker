@@ -6,8 +6,13 @@
   é parcial e é regravado a cada hora.
 - ``schedule_reprocess``: todo dia, os três dias antes de ontem, porque o GAM ajusta os
   números depois.
-- ``backfill_metrics``: histórico de uma network nova, em lotes de 7 dias, do mais novo
-  para o mais antigo.
+- ``backfill_metrics``: histórico de uma network nova, em lotes de 7 dias independentes, do
+  mais novo para o mais antigo: um lote que falha não impede os outros.
+
+Com a trava da network ocupada, o lote volta para a fila daqui a um minuto em vez de ser
+descartado: senão a sincronia e o reprocessamento da mesma network, ou dois lotes do
+histórico, deixavam buracos sem erro. O prazo cobre a fila inteira do histórico, com cada lote
+segurando a trava por até 30 minutos.
 
 Só networks com o inventário na própria network (M.A e conexão manual). As do MCM Manage
 Inventory ficam na network da Groone e entram numa tarefa própria, que lê um relatório só
@@ -45,6 +50,11 @@ BACKFILL_CHUNK_DAYS = 7
 
 REPROCESS_DAYS = 3
 
+# Com a network ocupada, tenta de novo a cada minuto por até oito horas.
+LOCK_RETRY_SECONDS = 60
+
+MAX_LOCK_ATTEMPTS = 480
+
 RETRY_FOR = (GamUnavailable,)
 
 
@@ -56,15 +66,16 @@ RETRY_FOR = (GamUnavailable,)
     retry_jitter=False,
     max_retries=4,
 )
-def sync_metrics(company_id: str, network_id: str, start: str, end: str) -> dict[str, Any]:
+def sync_metrics(
+    company_id: str, network_id: str, start: str, end: str, attempt: int = 0
+) -> dict[str, Any]:
     """Grava as métricas da network entre ``start`` e ``end`` (datas ISO, inclusive)."""
     services = get_services()
     company_uuid, network_uuid = uuid.UUID(company_id), uuid.UUID(network_id)
     first_day, last_day = date.fromisoformat(start), date.fromisoformat(end)
     with services.lock(f"gam:metrics:{network_id}", timeout=LOCK_SECONDS) as locked:
         if not locked:
-            log.info("métricas da network já em sincronização", extra={"network_id": network_id})
-            return {"skipped": "locked"}
+            return _network_busy(company_id, network_id, start, end, attempt)
         network = _network(services, company_uuid, network_uuid)
         if network is None:
             return {"skipped": "not_found"}
@@ -96,9 +107,29 @@ def sync_metrics(company_id: str, network_id: str, start: str, end: str) -> dict
     return result
 
 
+def _network_busy(
+    company_id: str, network_id: str, start: str, end: str, attempt: int
+) -> dict[str, Any]:
+    """A network está ocupada: o lote volta para a fila, até o limite de tentativas."""
+    extra = {"network_id": network_id, "start": start, "end": end, "attempt": attempt}
+    if attempt >= MAX_LOCK_ATTEMPTS:
+        log.warning("métricas da network desistiram: trava ocupada demais", extra=extra)
+        return {"skipped": "locked"}
+    log.info("métricas da network adiadas: trava ocupada", extra=extra)
+    _try_later(company_id, network_id, start, end, attempt + 1)
+    return {"skipped": "locked", "attempt": attempt + 1}
+
+
+def _try_later(company_id: str, network_id: str, start: str, end: str, attempt: int) -> None:
+    """Põe o lote de volta na fila daqui a um minuto."""
+    sync_metrics.apply_async(
+        args=(company_id, network_id, start, end, attempt), countdown=LOCK_RETRY_SECONDS
+    )
+
+
 @app.task(name="avant.gam.backfill_metrics")
 def backfill_metrics(company_id: str, network_id: str, days: int = BACKFILL_DAYS) -> int:
-    """Enfileira o histórico da network em lotes; devolve quantos lotes."""
+    """Enfileira o histórico da network em lotes independentes; devolve quantos lotes."""
     today = get_services().clock.now().date()
     chunks = 0
     chunk_end = today - timedelta(days=1)
