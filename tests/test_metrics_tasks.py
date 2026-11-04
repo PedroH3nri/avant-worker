@@ -198,21 +198,22 @@ def test_locked_chunk_goes_back_to_the_queue(
     assert reports(services).calls == []
 
 
-def test_backfill_runs_the_chunks_one_after_another(
+def test_a_failing_chunk_does_not_stop_the_rest_of_the_history(
     services: Services, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     owner = company(services)
     connected = network(services, owner)
-    sent: list[int] = []
-    original = gam_metrics_tasks._chunks_chain
+    source = reports(services)
+    original = source.report
+    failed: list[bool] = []
 
-    def spy(*args: Any) -> Any:
-        """Guarda quantos lotes foram encadeados."""
-        chained = original(*args)
-        sent.append(len(chained.tasks))
-        return chained
+    def report_once_broken(*args: Any) -> Any:
+        """O primeiro relatório quebra com um erro inesperado; os outros saem normais."""
+        if not failed:
+            failed.append(True)
+            raise RuntimeError("banco fora do ar")
+        return original(*args)
 
-    monkeypatch.setattr(gam_metrics_tasks, "_chunks_chain", spy)
+    monkeypatch.setattr(source, "report", report_once_broken)
     assert backfill_metrics.delay(str(owner.id), str(connected.id), days=15).get() == 3
-    assert sent == [3]
-    assert len(reports(services).calls) == 6
+    assert len(source.calls) == 4
