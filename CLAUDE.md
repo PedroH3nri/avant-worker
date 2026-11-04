@@ -17,7 +17,7 @@ Worker e agendador (Celery) do Groone Avant. Leia o README antes de mudar algo.
   código. Conferido por `scripts/clean_code.py` no CI.
 - Antes de abrir PR: `uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest && uv run python scripts/clean_code.py`.
 - Nada de segredos no repositório. Mensagens e comentários em português.
-- PRs vão para `develop`.
+- PRs vão para `pre-develop`; a promoção para `develop` passa por revisão e CI (skill `avant-fluxo-de-trabalho`).
 
 ## Contexto, issues e skills
 
