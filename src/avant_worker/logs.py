@@ -27,9 +27,12 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str = "INFO") -> None:
-    """Manda todos os logs em JSON para a saída padrão."""
+    """Manda todos os logs em JSON para a saída padrão; os clientes HTTP só a partir de WARNING,
+    porque registram cada pedido com a URL completa."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
