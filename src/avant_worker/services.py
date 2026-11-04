@@ -17,6 +17,7 @@ import redis
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
+from avant_core.gam.tools.interfaces import GamWriter
 from avant_core.mail import LogMailer, ResendMailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.ports import Mailer
@@ -27,6 +28,7 @@ from sqlalchemy import Engine, create_engine
 from avant_worker.adapters.exchange_rates import OpenExchangeRates
 from avant_worker.adapters.gam_client import RestGamClient
 from avant_worker.adapters.gam_reports import ReportKind, SoapReportClient
+from avant_worker.adapters.gam_writer import SoapGamWriter
 from avant_worker.adapters.page_fetcher import HttpPageFetcher
 from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
@@ -88,6 +90,7 @@ class Services:
     exchange_rates_override: "ExchangeRateSource | None" = None
     earnings_override: "EarningsSource | None" = None
     page_fetcher_override: "PageFetcher | None" = None
+    gam_writer_override: "GamWriter | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -98,6 +101,7 @@ class Services:
         self._exchange_rates: ExchangeRateSource | None = self.exchange_rates_override
         self._earnings: EarningsSource | None = self.earnings_override
         self._page_fetcher: PageFetcher | None = self.page_fetcher_override
+        self._gam_writer: GamWriter | None = self.gam_writer_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -154,6 +158,16 @@ class Services:
                 raise GamNotConfigured("defina GAM_SERVICE_ACCOUNT_FILE neste worker")
             self._reports = SoapReportClient(key_file, version=self.settings.gam_soap_version)
         return self._reports
+
+    @property
+    def gam_writer(self) -> "GamWriter":
+        """Escritas no GAM (SOAP) das ferramentas do painel interno; só a fila gam tem a chave."""
+        if self._gam_writer is None:
+            key_file = self.settings.gam_service_account_file
+            if not key_file:
+                raise GamNotConfigured("defina GAM_SERVICE_ACCOUNT_FILE neste worker")
+            self._gam_writer = SoapGamWriter(key_file, version=self.settings.gam_soap_version)
+        return self._gam_writer
 
     @property
     def earnings(self) -> "EarningsSource":
