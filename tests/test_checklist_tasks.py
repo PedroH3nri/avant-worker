@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
+import httpcore
 import httpx
+import pytest
 from avant_core.gam.inventory.models import Site
 from avant_core.metrics.models import GamCounts, GamDailyMetric
 from avant_core.site_checklists.enums import CheckOutcome
@@ -8,7 +10,7 @@ from avant_core.site_checklists.models import FetchedPage
 from avant_core.site_checklists.services.checklist_rules import current_month, previous_month
 
 from avant_worker.adapters import HttpPageFetcher
-from avant_worker.adapters.page_fetcher import USER_AGENT
+from avant_worker.adapters.page_fetcher import USER_AGENT, PublicOnlyBackend, public_address
 from avant_worker.app import _route, app
 from avant_worker.services import Services
 from avant_worker.tasks.checklists import open_checklists
@@ -126,3 +128,33 @@ def test_open_checklists_checks_sites_that_earned_last_month(services: Services)
     assert outcomes["ads.txt"] is CheckOutcome.OK
     assert outcomes["Contato"] is CheckOutcome.FAILED
     assert open_checklists.delay().get() == {"to_check": 0}
+
+
+@pytest.mark.parametrize(
+    ("host", "port"),
+    [
+        ("127.0.0.1", 80),
+        ("localhost", 80),
+        ("10.0.0.5", 443),
+        ("192.168.1.10", 80),
+        ("169.254.169.254", 80),
+        ("::1", 443),
+        ("rabbitmq.local.invalid", 15672),
+        ("example.com", 8080),
+    ],
+)
+def test_fetcher_never_connects_to_internal_addresses_or_other_ports(host: str, port: int) -> None:
+    with pytest.raises(httpcore.ConnectError):
+        PublicOnlyBackend().connect_tcp(host, port, timeout=1)
+
+
+def test_fetcher_refuses_internal_pages_and_redirects_to_them() -> None:
+    fetcher = HttpPageFetcher(interval=0)
+    assert fetcher.fetch("http://127.0.0.1/") is None
+    assert fetcher.fetch("http://localhost:15672/api/overview") is None
+    assert fetcher.fetch("http://169.254.169.254/latest/meta-data/") is None
+
+
+def test_public_addresses_are_allowed() -> None:
+    assert public_address("93.184.216.34") and public_address("2606:2800:220:1::1")
+    assert not public_address("::ffff:10.0.0.1") and not public_address("100.64.0.1")
