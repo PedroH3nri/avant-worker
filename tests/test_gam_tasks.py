@@ -1,3 +1,4 @@
+import logging
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -162,7 +163,10 @@ def test_check_access_and_schedulers(services: Services) -> None:
     assert count(services, "sites") == 1
 
 
-def test_discover_mcm_creates_network_and_imports(services: Services) -> None:
+def test_discover_mcm_creates_network_and_imports(
+    services: Services, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO)
     c = company(services, "dono@acai.com.br")
     client = fake(services)
     client.networks[GROONE_NETWORK] = GamNetworkInfo(GROONE_NETWORK, "Groone", is_test=False)
