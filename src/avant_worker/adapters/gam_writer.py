@@ -11,6 +11,7 @@ diferença é que aqui toda escrita confere antes o que já existe e só cria o 
 """
 
 import logging
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -26,6 +27,7 @@ ADVERTISER_NAME = "google"
 CREATIVE_NAME = "Display All requested sizes: automatically generated on {moment}"
 CREATIVE_SNIPPET = "<!-- Ad Exchange -->"
 CREATE_BATCH = 500
+DUPLICATE = "VALUE_NAME_DUPLICATE"
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -117,6 +119,48 @@ class SoapGamWriter:
             self._call(network_code, "CustomTargetingService", "createCustomTargetingValues", batch)
         self._log_write(network_code, "key_values", len(missing))
         return len(missing)
+
+    def ensure_key_values(self, network_code: str, key_id: str, values: list[str]) -> list[str]:
+        """ESCREVE: cria os valores sem consultar antes, em lotes de 500; os recusados saem do lote
+        (duplicados contam como existentes) e o resto vai de novo. Devolve os que existem."""
+        existing: list[str] = []
+        for start in range(0, len(values), CREATE_BATCH):
+            existing += self._create_values(
+                network_code, key_id, values[start : start + CREATE_BATCH]
+            )
+        self._log_write(network_code, "traffic_key_values", len(existing))
+        return existing
+
+    def _create_values(self, network_code: str, key_id: str, batch: list[str]) -> list[str]:
+        """Um lote: a cada recusa do GAM, tira os itens recusados e manda o resto."""
+        pending, duplicated = list(batch), []
+        while pending:
+            payload = [
+                {
+                    "customTargetingKeyId": int(key_id),
+                    "name": value,
+                    "displayName": value,
+                    "matchType": "EXACT",
+                }
+                for value in pending
+            ]
+            try:
+                self._call(
+                    network_code, "CustomTargetingService", "createCustomTargetingValues", payload
+                )
+            except GamError as error:
+                refused = _refused_values(error.__cause__, len(pending))
+                if not refused:
+                    raise
+                for index, reason in refused.items():
+                    if reason == DUPLICATE:
+                        duplicated.append(pending[index])
+                    else:
+                        log.warning("valor recusado pelo GAM", extra={"reason": reason})
+                pending = [value for index, value in enumerate(pending) if index not in refused]
+                continue
+            return duplicated + pending
+        return duplicated
 
     def find_order(self, network_code: str, name: str) -> GamOrderRef | None:
         """A order com esse nome (só leitura)."""
@@ -426,3 +470,17 @@ def _line_item(order_id: str, item: LineItemSpec) -> dict[str, Any]:
             }
         },
     }
+
+
+def _refused_values(fault: BaseException | None, size: int) -> dict[int, str]:
+    """Os itens do lote que o GAM recusou (índice para o motivo); vazio quando a falha não aponta
+    item nenhum (cota, rede), para quem chama deixar o erro subir."""
+    if not isinstance(fault, errors.GoogleAdsServerFault):
+        return {}
+    refused: dict[int, str] = {}
+    for error in fault.errors or []:
+        found = re.search(r"\[(\d+)\]", str(getattr(error, "fieldPath", "") or ""))
+        if found is None or int(found.group(1)) >= size:
+            return {}
+        refused[int(found.group(1))] = str(getattr(error, "reason", "") or "")
+    return refused

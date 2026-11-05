@@ -1,5 +1,9 @@
 """Tarefas do Google Ad Manager: networks, MCM e as ferramentas do painel interno."""
 
+from avant_worker.tasks.gam.key_value_tasks import (
+    process_key_values,
+    refresh_key_value_networks,
+)
 from avant_worker.tasks.gam.mcm_tasks import discover_mcm, sync_contracts
 from avant_worker.tasks.gam.network_tasks import (
     check_access,
@@ -12,6 +16,8 @@ from avant_worker.tasks.gam.tool_tasks import run_tool
 __all__ = [
     "check_access",
     "discover_mcm",
+    "process_key_values",
+    "refresh_key_value_networks",
     "run_tool",
     "schedule_imports",
     "schedule_tests",
