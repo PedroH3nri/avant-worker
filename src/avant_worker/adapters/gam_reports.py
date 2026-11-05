@@ -14,7 +14,9 @@ import gzip
 import logging
 import tempfile
 import time
+import zlib
 from collections.abc import Iterable, Iterator
+from contextlib import ExitStack
 from datetime import date
 from enum import StrEnum
 from typing import IO, Any
@@ -79,13 +81,14 @@ class SoapReportClient:
     def report(
         self, network_code: str, kind: ReportKind, start: date, end: date
     ) -> Iterator[GamReportRow]:
-        """Linhas do relatório do período, já no formato do avant-core, lidas do arquivo
-        temporário aos poucos (o relatório inteiro nunca fica na memória)."""
-        with tempfile.TemporaryFile() as downloaded:
+        """Baixa o relatório do período para um arquivo temporário já na chamada, antes de
+        quem grava abrir a transação, e devolve as linhas lidas desse arquivo aos poucos."""
+        with ExitStack() as cleanup:
+            downloaded = cleanup.enter_context(tempfile.TemporaryFile())
             self._download(network_code, report_query(kind, start, end), downloaded)
             downloaded.seek(0)
-            with gzip.GzipFile(fileobj=downloaded) as content:
-                yield from parse_report(content, kind)
+            cleanup.pop_all()
+        return _read_downloaded(downloaded, kind)
 
     def _download(self, network_code: str, query: dict[str, Any], target: IO[bytes]) -> None:
         """Roda o relatório na network, espera terminar e grava o CSV comprimido no arquivo."""
@@ -118,6 +121,16 @@ class SoapReportClient:
                 self._key_file, oauth2.GetAPIScope("ad_manager")
             )
         return ad_manager.AdManagerClient(self._oauth, APPLICATION_NAME, network_code=network_code)
+
+
+def _read_downloaded(downloaded: IO[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
+    """As linhas do CSV comprimido no arquivo baixado; fecha o arquivo no fim e trata um gzip
+    corrompido ou truncado como falha temporária, para a tarefa tentar de novo."""
+    with downloaded, gzip.GzipFile(fileobj=downloaded) as content:
+        try:
+            yield from parse_report(content, kind)
+        except (EOFError, gzip.BadGzipFile, zlib.error) as error:
+            raise GamUnavailable(f"o relatório do GAM veio corrompido: {error}") from error
 
 
 def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:

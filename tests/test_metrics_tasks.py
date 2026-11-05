@@ -114,6 +114,59 @@ def test_report_is_read_from_a_temporary_file_as_it_streams(
     assert not isinstance(written[0], io.BytesIO)
 
 
+def _soap_source(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes
+) -> tuple[SoapReportClient, list[str]]:
+    """Um SoapReportClient com um downloader falso que grava ``payload``; a lista recebe
+    "baixado" quando o download termina."""
+    events: list[str] = []
+
+    class Downloader:
+        """O downloader do googleads: espera o relatório e escreve o conteúdo no arquivo."""
+
+        def WaitForReport(self, job: object, poll: int) -> str:
+            """Devolve o id do relatório pronto."""
+            return "job-1"
+
+        def DownloadReportToFile(
+            self, job_id: str, export_format: str, target: io.BufferedIOBase
+        ) -> None:
+            """Escreve o conteúdo no arquivo que recebeu."""
+            target.write(payload)
+            events.append("baixado")
+
+    class Client:
+        """O cliente da network com o downloader."""
+
+        def GetDataDownloader(self, version: str) -> Downloader:
+            """O downloader do relatório."""
+            return Downloader()
+
+    source = SoapReportClient("chave.json", version="v202508")
+    monkeypatch.setattr(source, "_client", lambda network_code: Client())
+    return source, events
+
+
+def test_report_downloads_before_the_rows_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    source, events = _soap_source(monkeypatch, gzip.compress(AD_UNIT_CSV.encode()))
+    rows = source.report("123", ReportKind.AD_UNIT, DAY, DAY)
+    assert events == ["baixado"]
+    assert [row.revenue_micros for row in rows] == [1_500_000, 0]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"isto nao e gzip", gzip.compress(AD_UNIT_CSV.encode())[:-12]],
+    ids=["corrompido", "truncado"],
+)
+def test_a_broken_report_file_is_a_temporary_failure(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes
+) -> None:
+    source, _events = _soap_source(monkeypatch, payload)
+    with pytest.raises(GamUnavailable):
+        list(source.report("123", ReportKind.AD_UNIT, DAY, DAY))
+
+
 def test_report_query_matches_unified_sync() -> None:
     query = report_query(ReportKind.KEY_VALUE, DAY, DAY + timedelta(days=1))
     assert "CUSTOM_CRITERIA" in query["dimensions"]
