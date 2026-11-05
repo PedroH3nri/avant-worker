@@ -11,13 +11,13 @@ oito colunas, em USD e com os ad units hierárquicos (``Ad unit 1``, ``Ad unit 2
 
 import csv
 import gzip
-import io
 import logging
+import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import date
 from enum import StrEnum
-from typing import Any
+from typing import IO, Any
 
 from avant_core.gam.client.errors import (
     GamAccessDenied,
@@ -79,18 +79,21 @@ class SoapReportClient:
     def report(
         self, network_code: str, kind: ReportKind, start: date, end: date
     ) -> Iterator[GamReportRow]:
-        """Linhas do relatório do período, já no formato do avant-core."""
-        content = self._download(network_code, report_query(kind, start, end))
-        yield from parse_report(content, kind)
+        """Linhas do relatório do período, já no formato do avant-core, lidas do arquivo
+        temporário aos poucos (o relatório inteiro nunca fica na memória)."""
+        with tempfile.TemporaryFile() as downloaded:
+            self._download(network_code, report_query(kind, start, end), downloaded)
+            downloaded.seek(0)
+            with gzip.GzipFile(fileobj=downloaded) as content:
+                yield from parse_report(content, kind)
 
-    def _download(self, network_code: str, query: dict[str, Any]) -> bytes:
-        """Roda o relatório na network, espera terminar e devolve o CSV descomprimido."""
+    def _download(self, network_code: str, query: dict[str, Any], target: IO[bytes]) -> None:
+        """Roda o relatório na network, espera terminar e grava o CSV comprimido no arquivo."""
         started = time.monotonic()
         try:
             downloader = self._client(network_code).GetDataDownloader(version=self._version)
             job_id = downloader.WaitForReport({"reportQuery": query}, POLL_SECONDS)
-            buffer = io.BytesIO()
-            downloader.DownloadReportToFile(job_id, "CSV_DUMP", buffer)
+            downloader.DownloadReportToFile(job_id, "CSV_DUMP", target)
         except errors.AdManagerReportError as error:
             raise GamUnavailable(f"o relatório falhou no GAM: {error}") from error
         except errors.GoogleAdsServerFault as error:
@@ -104,10 +107,9 @@ class SoapReportClient:
             extra={
                 "network_code": network_code,
                 "ms": round((time.monotonic() - started) * 1000),
-                "bytes": buffer.tell(),
+                "bytes": target.tell(),
             },
         )
-        return gzip.decompress(buffer.getvalue())
 
     def _client(self, network_code: str) -> ad_manager.AdManagerClient:
         """Cliente do googleads da network, reaproveitando o token da conta de serviço."""
@@ -137,9 +139,10 @@ def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:
     }
 
 
-def parse_report(content: bytes, kind: ReportKind) -> Iterator[GamReportRow]:
-    """Lê o CSV_DUMP; no relatório por key-value, linha sem ``chave=valor`` fica de fora."""
-    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+def parse_report(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
+    """Lê o CSV_DUMP linha a linha; no relatório por key-value, linha sem ``chave=valor`` fica
+    de fora."""
+    reader = csv.DictReader(line.decode("utf-8-sig") for line in content)
     for record in reader:
         custom_key: str | None = None
         custom_value: str | None = None
