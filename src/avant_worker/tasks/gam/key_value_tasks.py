@@ -8,6 +8,7 @@ não ir ao banco a cada página. Os ids das keys vêm do GAM pelo nome, guardado
 
 import logging
 import time
+import uuid
 from collections import defaultdict
 from typing import cast
 
@@ -16,6 +17,7 @@ from avant_core.gam.key_values.services import (
     connected_network_codes,
     register_traffic_key_values,
 )
+from celery.exceptions import SoftTimeLimitExceeded
 
 from avant_worker.app import app
 from avant_worker.services import Services, get_services
@@ -25,27 +27,33 @@ log = logging.getLogger("avant.worker.key_values")
 CONNECTED = "kv:networks:connected"
 PENDING_NETWORKS = "kv:buffer:networks"
 BUFFER = "kv:buffer:{network}"
-PROCESSING = "kv:processing:{network}"
+PROCESSING = "kv:processing:{network}:{run}"
 SEEN = "kv:seen:{network}"
 KEY_IDS = "kv:key-ids:{network}"
 SEEN_FOR = 24 * 60 * 60
 KEY_IDS_FOR = 60 * 60
+LOCK_FOR = 10 * 60
 
 
 @app.task(name="avant.gam.process_key_values")
 def process_key_values() -> int:
     """A cada 30 s: esvazia o buffer de cada network e cria no GAM os valores novos; uma network
-    que falha não para as outras (os valores voltam com o tráfego)."""
+    que falha não para as outras, e os pares dela voltam ao buffer."""
     services = get_services()
     if services.redis is None:
         return 0
     stored = 0
-    for raw in cast(set[bytes], services.redis.smembers(PENDING_NETWORKS)):
-        network = raw.decode() if isinstance(raw, bytes) else str(raw)
-        try:
-            stored += _process_network(services, network)
-        except Exception:
-            log.exception("key-values da network não foram criados", extra={"network": network})
+    with services.lock("key-values", timeout=LOCK_FOR) as acquired:
+        if not acquired:
+            return 0
+        for raw in cast(set[bytes], services.redis.smembers(PENDING_NETWORKS)):
+            network = raw.decode() if isinstance(raw, bytes) else str(raw)
+            try:
+                stored += _process_network(services, network)
+            except SoftTimeLimitExceeded:
+                raise
+            except Exception:
+                log.exception("key-values da network não foram criados", extra={"network": network})
     return stored
 
 
@@ -67,35 +75,45 @@ def refresh_key_value_networks() -> int:
 
 
 def _process_network(services: Services, network: str) -> int:
-    """Tira os pares do buffer (renomeando, para não perder o que chega no meio), descarta os
-    vistos nas últimas 24 horas e manda o resto para o caso de uso do core."""
+    """Tira os pares do buffer (renomeando para uma chave só desta execução), descarta os vistos
+    nas últimas 24 horas e manda o resto ao core; se o GAM falhar, devolve os pares ao buffer."""
     assert services.redis is not None
     client = services.redis
-    buffer, processing = BUFFER.format(network=network), PROCESSING.format(network=network)
+    buffer = BUFFER.format(network=network)
+    processing = PROCESSING.format(network=network, run=uuid.uuid4().hex)
     client.srem(PENDING_NETWORKS, network)
     if not client.exists(buffer):
         return 0
     client.rename(buffer, processing)
-    members = {item.decode() for item in cast(set[bytes], client.smembers(processing))}
+    members = sorted(item.decode() for item in cast(set[bytes], client.smembers(processing)))
     client.delete(processing)
     seen, now = SEEN.format(network=network), time.time()
     client.zremrangebyscore(seen, 0, now - SEEN_FOR)
-    fresh = [member for member in sorted(members) if client.zscore(seen, member) is None]
+    scores = cast(list[float | None], client.zmscore(seen, members)) if members else []
+    fresh = [member for member, score in zip(members, scores, strict=True) if score is None]
     if not fresh:
         return 0
     values: dict[str, set[str]] = defaultdict(set)
     for member in fresh:
         key, value = member.split(":", 1)
         values[key].add(value)
-    stored = register_traffic_key_values(
-        services.trusted_uow(),
-        writer=services.gam_writer,
-        network_code=network,
-        key_ids=_key_ids(services, network),
-        values=dict(values),
-        clock=services.clock,
-    )
-    client.zadd(seen, {member: now for member in fresh})
+    try:
+        key_ids = _key_ids(services, network)
+        stored = register_traffic_key_values(
+            services.trusted_uow(),
+            writer=services.gam_writer,
+            network_code=network,
+            key_ids=key_ids,
+            values=dict(values),
+            clock=services.clock,
+        )
+    except Exception:
+        client.sadd(buffer, *fresh)
+        client.sadd(PENDING_NETWORKS, network)
+        raise
+    done = [member for member in fresh if member.split(":", 1)[0] in key_ids]
+    if done:
+        client.zadd(seen, {member: now for member in done})
     return stored
 
 

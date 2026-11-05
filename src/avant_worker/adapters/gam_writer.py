@@ -28,9 +28,6 @@ CREATIVE_NAME = "Display All requested sizes: automatically generated on {moment
 CREATIVE_SNIPPET = "<!-- Ad Exchange -->"
 CREATE_BATCH = 500
 DUPLICATE = "VALUE_NAME_DUPLICATE"
-REFUSED_VALUES = frozenset(
-    {DUPLICATE, "VALUE_NAME_INVALID_LENGTH", "VALUE_NAME_INVALID_CHARS", "VALUE_NAME_EMPTY"}
-)
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -152,12 +149,14 @@ class SoapGamWriter:
                     network_code, "CustomTargetingService", "createCustomTargetingValues", payload
                 )
             except GamError as error:
-                refused = _refused_values(error.__cause__)
+                refused = _refused_values(error.__cause__, len(pending))
                 if not refused:
                     raise
-                duplicated += [
-                    pending[index] for index, reason in refused.items() if reason == DUPLICATE
-                ]
+                for index, reason in refused.items():
+                    if reason == DUPLICATE:
+                        duplicated.append(pending[index])
+                    else:
+                        log.warning("valor recusado pelo GAM", extra={"reason": reason})
                 pending = [value for index, value in enumerate(pending) if index not in refused]
                 continue
             return duplicated + pending
@@ -473,16 +472,15 @@ def _line_item(order_id: str, item: LineItemSpec) -> dict[str, Any]:
     }
 
 
-def _refused_values(fault: BaseException | None) -> dict[int, str]:
-    """Os itens do lote que o GAM recusou por nome de valor (índice para o motivo); vazio se a
-    falha foi outra, para quem chama deixar o erro subir."""
+def _refused_values(fault: BaseException | None, size: int) -> dict[int, str]:
+    """Os itens do lote que o GAM recusou (índice para o motivo); vazio quando a falha não aponta
+    item nenhum (cota, rede), para quem chama deixar o erro subir."""
     if not isinstance(fault, errors.GoogleAdsServerFault):
         return {}
     refused: dict[int, str] = {}
     for error in fault.errors or []:
-        reason = str(getattr(error, "reason", "") or "")
         found = re.search(r"\[(\d+)\]", str(getattr(error, "fieldPath", "") or ""))
-        if reason not in REFUSED_VALUES or found is None:
+        if found is None or int(found.group(1)) >= size:
             return {}
-        refused[int(found.group(1))] = reason
+        refused[int(found.group(1))] = str(getattr(error, "reason", "") or "")
     return refused

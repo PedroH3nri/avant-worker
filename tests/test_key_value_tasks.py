@@ -29,7 +29,7 @@ def _fault(*refused: tuple[int, str]) -> errors.GoogleAdsServerFault:
 def test_the_writer_drops_refused_values_and_sends_the_rest_again() -> None:
     writer, client = soap_writer({})
     sent: list[list[str]] = []
-    replies = [_fault((0, "VALUE_NAME_DUPLICATE"), (1, "VALUE_NAME_INVALID_CHARS")), None]
+    replies = [_fault((0, "VALUE_NAME_DUPLICATE"), (1, "OUTRO_MOTIVO")), None]
 
     def create(values: list[dict[str, Any]]) -> None:
         """Registra o lote e responde na ordem: primeiro recusa, depois aceita."""
@@ -49,8 +49,10 @@ def test_the_writer_lets_other_gam_errors_through() -> None:
     writer, client = soap_writer({})
 
     def create(values: list[dict[str, Any]]) -> None:
-        """O GAM recusa por outro motivo."""
-        raise _fault((0, "KEY_NOT_FOUND"))
+        """O GAM falha sem apontar item (cota)."""
+        raise errors.GoogleAdsServerFault(
+            None, errors=[SimpleNamespace(reason="EXCEEDED_QUOTA", fieldPath="")], message="cota"
+        )
 
     service = client.GetService("CustomTargetingService", "v202508")
     service.createCustomTargetingValues = create  # type: ignore[attr-defined]
@@ -124,3 +126,29 @@ def test_connected_networks_reach_the_route(redis_services: Services) -> None:
     connected_codes = cast(set[bytes], services.redis.smembers("kv:networks:connected"))
     members = {item.decode() for item in connected_codes}
     assert members == {"2100", "22893970961"}
+
+
+def test_a_gam_failure_puts_the_pairs_back_and_a_key_without_id_is_not_seen(
+    redis_services: Services,
+) -> None:
+    services = redis_services
+    assert services.redis is not None
+    fake = FakeTrafficWriter()
+    services._gam_writer = fake  # type: ignore[assignment]
+    services.redis.sadd("kv:buffer:2100", "utm_medium:cpc")
+    services.redis.sadd("kv:buffer:networks", "2100")
+    assert process_key_values.delay().get() == 0
+    assert services.redis.zscore("kv:seen:2100", "utm_medium:cpc") is None
+
+    def broken(network_code: str, key_id: str, values: list[str]) -> list[str]:
+        """O GAM fora do ar."""
+        raise GamError("GAM fora do ar")
+
+    fake.ensure_key_values = broken  # type: ignore[method-assign]
+    services.redis.sadd("kv:buffer:2100", "utm_source:raro")
+    services.redis.sadd("kv:buffer:networks", "2100")
+    assert process_key_values.delay().get() == 0
+    pending = cast(set[bytes], services.redis.smembers("kv:buffer:2100"))
+    assert pending == {b"utm_source:raro"}
+    assert services.redis.sismember("kv:buffer:networks", "2100")
+    assert services.redis.zscore("kv:seen:2100", "utm_source:raro") is None
