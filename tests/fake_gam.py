@@ -1,5 +1,7 @@
 """Um GAM em memória para as tarefas (o do avant-core fica nos testes dele)."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -59,13 +61,17 @@ class FakeReports:
     fail_next: list[GamError] = field(default_factory=list)
     calls: list[tuple[str, ReportKind, date, date]] = field(default_factory=list)
 
+    @contextmanager
     def report(
         self, network_code: str, kind: ReportKind, start: date, end: date
-    ) -> list[GamReportRow]:
+    ) -> Iterator[Iterator[GamReportRow]]:
+        """As linhas prontas do período, ou o próximo erro de ``fail_next``."""
         self.calls.append((network_code, kind, start, end))
         if self.fail_next:
             raise self.fail_next.pop(0)
-        return [row for row in self.rows.get((network_code, kind), []) if start <= row.date <= end]
+        yield iter(
+            [row for row in self.rows.get((network_code, kind), []) if start <= row.date <= end]
+        )
 
 
 @dataclass
