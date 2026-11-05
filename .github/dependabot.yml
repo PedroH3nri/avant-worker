@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    target-branch: pre-develop
+    schedule:
+      interval: weekly
+    groups:
+      imagens:
+        patterns: ["*"]
