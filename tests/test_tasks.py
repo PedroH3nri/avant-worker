@@ -49,7 +49,8 @@ def test_purge_expired(services: Services) -> None:
         uow.commit()
 
     result = purge_expired.delay().get()
-    assert result == {"sessions": 1, "password_resets": 0}
+    assert result["sessions"] == 1 and result["password_resets"] == 0
+    assert set(result) >= {"audit_logs", "sync_runs", "gam_tool_runs"}
     with services.engine.connect() as conn:
         left = conn.execute(text("SELECT count(*) FROM sessions")).scalar_one()
     assert left == 1
