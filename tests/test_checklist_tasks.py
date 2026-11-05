@@ -14,6 +14,7 @@ from avant_worker.adapters.page_fetcher import USER_AGENT, PublicOnlyBackend, pu
 from avant_worker.app import _route, app
 from avant_worker.services import Services
 from avant_worker.tasks.checklists import open_checklists
+from tests.conftest import refresh_levels
 from tests.test_gam_tasks import company, network
 
 HOME = (
@@ -101,6 +102,7 @@ def test_open_checklists_checks_sites_that_earned_last_month(services: Services)
                 )
             ]
         )
+        refresh_levels(uow)
         uow.commit()
     services._page_fetcher = FakePageFetcher(
         {

@@ -1,24 +1,24 @@
-# Graph Report - avant-worker  (2026-11-04)
+# Graph Report - avant-worker  (2026-11-05)
 
 ## Corpus Check
-- 70 files · ~39,539 words
+- 70 files · ~39,690 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 7 file(s) not represented in the graph (top: (none) 6, .lock 1)
 
 ## Summary
-- 1023 nodes · 2008 edges · 52 communities (29 shown, 23 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 150 edges (avg confidence: 0.91)
+- 1026 nodes · 2024 edges · 66 communities (34 shown, 32 thin omitted)
+- Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 152 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `663c7bdf`
+- Built from commit: `cd8e4593`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - test_exchange_rates_tasks.py
 - test_checklist_tasks.py
-- app.py
+- Settings
 - steps
 - Avant: conexão com o GAM
 - mcm_earnings_tasks.py
@@ -36,8 +36,8 @@
 - session-start.sh
 - avant-worker
 - ExchangeRateSource
-- test_gam_tool_tasks.py
-- get_services
+- fake_gam.py
+- gam_metrics_tasks.py
 - FakeGamClient
 - test_schedule_tasks.py
 - _route
@@ -48,22 +48,36 @@
 - _last
 - _HttpxResponse
 - _FixedClock
-- RestGamClient
+- OpenExchangeRates
+- tool_tasks.py
 - adapters/__init__.py
 - FakeReports
 - MemoryWriter
-- get_services
+- network_tasks.py
 - .list_mcm_earnings
 - _error
 - soap_writer
 - services.py
+- logging
 - page_views.py
 - Avant: repositório e plano do MVP
 - Arquitetura do MVP do Avant
+- get_services
+- gam_reports.py
+- gam/__init__.py
+- schedule_tasks.py
+- RestGamClient
+- app.py
+- services
+- SoapReportClient
+- purge_tasks.py
 - pytest
 - source_files
-- parse_report
+- ReportKind
 - avant-worker
+- _failure
+- FakeCredentials
+- .exchange_rates
 
 ## God Nodes (most connected - your core abstractions)
 1. `Services` - 77 edges
@@ -92,19 +106,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (52 total, 23 thin omitted)
+## Communities (66 total, 32 thin omitted)
 
 ### Community 0 - "test_exchange_rates_tasks.py"
 Cohesion: 0.06
 Nodes (5): _ad_unit(), _line_item(), _order_ref(), SoapGamWriter, test_writer_payloads_follow_genius()
 
 ### Community 1 - "test_checklist_tasks.py"
-Cohesion: 0.05
-Nodes (10): HttpPageFetcher, public_address(), _public_transport(), PublicOnlyBackend, FakePageFetcher, test_checklist_tasks_are_registered(), test_fetcher_never_connects_to_internal_addresses_or_other_ports(), test_fetcher_refuses_internal_pages_and_redirects_to_them() (+2 more)
-
-### Community 2 - "app.py"
-Cohesion: 0.06
-Nodes (9): create_app(), _failure(), _logging(), configure_logging(), JsonFormatter, _mailer(), BrokerSettings, Settings (+1 more)
+Cohesion: 0.07
+Nodes (7): HttpPageFetcher, public_address(), _public_transport(), PublicOnlyBackend, test_fetcher_refuses_internal_pages_and_redirects_to_them(), test_fetcher_sends_the_avant_user_agent_and_reads_only_text(), test_public_addresses_are_allowed()
 
 ### Community 3 - "steps"
 Cohesion: 0.06
@@ -135,8 +145,8 @@ Cohesion: 0.12
 Nodes (16): API first e chaves de API, Atribuição de sites, Avant: endpoints da API do MVP, Catálogo de permissões, Convenções, Convites, Decisões de Pedro (23/10/2026), Empresa (+8 more)
 
 ### Community 10 - "test_gam_client.py"
-Cohesion: 0.14
-Nodes (13): client(), record(), FakeCredentials, ok(), test_ad_units_without_root_and_archived(), test_child_publishers(), test_http_errors_are_classified(), test_network_and_admin_check() (+5 more)
+Cohesion: 0.19
+Nodes (12): client(), record(), ok(), test_ad_units_without_root_and_archived(), test_child_publishers(), test_http_errors_are_classified(), test_network_and_admin_check(), handler() (+4 more)
 
 ### Community 11 - "Requisitos do novo SaaS AdTech Groone"
 Cohesion: 0.17
@@ -151,44 +161,60 @@ Cohesion: 0.18
 Nodes (5): check_file(), docstring_problems(), inline_comments(), is_exempt(), single_letter_names()
 
 ### Community 15 - "Services"
-Cohesion: 0.06
-Nodes (46): avant-worker, Contexto, issues e skills, Services, FakePageViews, test_alerts_fire_once_and_mail_the_list_once(), test_open_checklists_checks_sites_that_earned_last_month(), earnings(), FixedClock (+38 more)
+Cohesion: 0.05
+Nodes (50): avant-worker, Contexto, issues e skills, Services, refresh_levels(), test_alerts_fire_once_and_mail_the_list_once(), FakePageFetcher, test_fetcher_never_connects_to_internal_addresses_or_other_ports(), test_open_checklists_checks_sites_that_earned_last_month() (+42 more)
 
 ### Community 22 - "ExchangeRateSource"
 Cohesion: 0.10
 Nodes (4): EarningsSource, ExchangeRateSource, PageViewSource, ReportSource
 
-### Community 23 - "test_gam_tool_tasks.py"
-Cohesion: 0.24
-Nodes (3): soap_writer(), test_writer_reads_seller_in_groone_network(), test_writer_skips_what_already_exists()
+### Community 23 - "fake_gam.py"
+Cohesion: 0.14
+Nodes (3): FakeExchangeRates, FakePageViews, FakeReports
 
-### Community 24 - "get_services"
-Cohesion: 0.09
-Nodes (12): ReportKind, backfill_metrics(), _fan_out(), _network(), _network_busy(), _reads_groone_network(), schedule_metrics(), schedule_reprocess() (+4 more)
+### Community 24 - "gam_metrics_tasks.py"
+Cohesion: 0.16
+Nodes (7): _network(), _network_busy(), _reads_groone_network(), _store(), sync_metrics(), _try_later(), test_metrics_tasks_are_registered_on_the_gam_queue()
 
-### Community 25 - "FakeGamClient"
+### Community 26 - "test_schedule_tasks.py"
 Cohesion: 0.17
-Nodes (4): use_services(), engine(), services(), FakeGamClient
+Nodes (3): test_alert_tasks_are_registered_on_their_queues(), test_report_preview_tasks_are_registered_on_the_default_queue(), test_schedule_tasks_are_registered_on_their_queues()
 
 ### Community 27 - "_route"
-Cohesion: 0.22
-Nodes (8): _route(), test_commission_tasks_are_registered_on_the_default_queue(), test_earnings_task_is_on_the_gam_queue(), test_gam_tasks_are_registered_on_the_gam_queue(), test_tool_task_is_registered(), test_page_view_tasks_are_registered_on_the_default_queue(), test_report_preview_tasks_are_registered_on_the_default_queue(), test_schedule_tasks_are_registered_on_their_queues()
+Cohesion: 0.25
+Nodes (7): _route(), test_checklist_tasks_are_registered(), test_commission_tasks_are_registered_on_the_default_queue(), test_gam_tasks_are_registered_on_the_gam_queue(), test_tool_task_is_registered(), test_page_view_tasks_are_registered_on_the_default_queue(), test_queue_comes_from_the_task_name()
 
 ### Community 28 - "Avant: grupos na Empresa e imagem da Empresa"
 Cohesion: 0.20
 Nodes (9): Avant: grupos na Empresa e imagem da Empresa, Decisões do Pedro (26/10), Herança de comissão e meta, Imagem da Empresa, Issues, Modelo de dados, Regras, Resumo (+1 more)
 
 ### Community 29 - "test_exchange_rates_tasks.py"
-Cohesion: 0.06
-Nodes (10): ExchangeRatesUnavailable, OpenExchangeRates, closed_days_to_fetch(), sync_exchange_rates(), FakeExchangeRates, test_client_reads_rates_as_decimals_and_fails_clearly(), test_closed_days_backfill_then_only_what_is_missing(), test_exchange_rates_task_is_on_the_default_queue() (+2 more)
+Cohesion: 0.14
+Nodes (6): closed_days_to_fetch(), sync_exchange_rates(), test_client_reads_rates_as_decimals_and_fails_clearly(), test_closed_days_backfill_then_only_what_is_missing(), test_exchange_rates_task_is_on_the_default_queue(), test_sync_without_key_does_nothing()
 
-### Community 41 - "get_services"
-Cohesion: 0.05
-Nodes (18): GamNotConfigured, get_services(), discover_mcm(), sync_contracts(), check_access(), _fan_out(), _flat(), schedule_imports() (+10 more)
+### Community 36 - "tool_tasks.py"
+Cohesion: 0.16
+Nodes (5): GamNotConfigured, _import(), run_tool(), _try_later(), _updated()
+
+### Community 41 - "network_tasks.py"
+Cohesion: 0.19
+Nodes (7): check_access(), _fan_out(), _flat(), schedule_imports(), schedule_tests(), sync_network(), _updated()
 
 ### Community 42 - ".list_mcm_earnings"
 Cohesion: 0.22
 Nodes (3): _micros(), _month(), test_client_reads_mcm_earnings_money_in_micros()
+
+### Community 44 - "soap_writer"
+Cohesion: 0.13
+Nodes (5): FakeSoapClient, FakeSoapService, soap_writer(), test_writer_reads_seller_in_groone_network(), test_writer_skips_what_already_exists()
+
+### Community 46 - "logging"
+Cohesion: 0.19
+Nodes (3): configure_logging(), JsonFormatter, test_http_client_logs_do_not_carry_request_urls()
+
+### Community 47 - "page_views.py"
+Cohesion: 0.15
+Nodes (3): MongoPageViews, parse_documents(), test_parse_documents_reads_the_data_counter()
 
 ### Community 48 - "Avant: repositório e plano do MVP"
 Cohesion: 0.17
@@ -198,13 +224,21 @@ Nodes (11): Como trabalhar nos repositórios, Ambientes, deploy e backup, Avant:
 Cohesion: 0.15
 Nodes (12): Arquitetura do MVP do Avant, Controle de acesso no estilo do Defender, Decisões e perguntas em aberto, Endpoints da API REST, Estrutura do repositório, Fluxos, Isolamento, autenticação e permissões, Modelo de dados (+4 more)
 
-### Community 59 - "pytest"
-Cohesion: 0.05
-Nodes (19): check_alerts(), notify_alerts(), schedule_alerts(), check_checklist(), _dispatch(), dispatch_checklists(), open_checklists(), refresh_report_preview() (+11 more)
+### Community 50 - "get_services"
+Cohesion: 0.23
+Nodes (5): get_services(), backfill_metrics(), _fan_out(), schedule_metrics(), schedule_reprocess()
 
-### Community 61 - "parse_report"
-Cohesion: 0.08
-Nodes (10): _ad_unit_path(), _classify(), _integer(), parse_report(), report_query(), _soap_date(), SoapReportClient, test_parse_ad_unit_report() (+2 more)
+### Community 56 - "services"
+Cohesion: 0.25
+Nodes (4): use_services(), engine(), services(), FakeEarnings
+
+### Community 59 - "pytest"
+Cohesion: 0.06
+Nodes (15): check_alerts(), notify_alerts(), schedule_alerts(), check_checklist(), _dispatch(), dispatch_checklists(), open_checklists(), refresh_report_preview() (+7 more)
+
+### Community 61 - "ReportKind"
+Cohesion: 0.12
+Nodes (9): _ad_unit_path(), _integer(), parse_report(), report_query(), ReportKind, _soap_date(), test_parse_ad_unit_report(), test_parse_key_value_report_skips_rows_without_criteria() (+1 more)
 
 ### Community 62 - "avant-worker"
 Cohesion: 0.22
@@ -212,23 +246,23 @@ Nodes (8): avant-worker, Como funciona, Desenvolvimento, Estrutura, Filas e tare
 
 ## Knowledge Gaps
 - **1 isolated node(s):** `avant-worker`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 504 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **23 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 505 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **32 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Services` connect `Services` to `test_exchange_rates_tasks.py`, `test_checklist_tasks.py`, `app.py`, `RestGamClient`, `get_services`, `services.py`, `test_exchange_rates_tasks.py`, `get_services`, `FakeGamClient`, `pytest`, `parse_report`?**
-  _High betweenness centrality (0.120) - this node is a cross-community bridge._
+- **Why does `Services` connect `Services` to `test_exchange_rates_tasks.py`, `test_checklist_tasks.py`, `Settings`, `OpenExchangeRates`, `.exchange_rates`, `tool_tasks.py`, `network_tasks.py`, `services.py`, `page_views.py`, `get_services`, `RestGamClient`, `services`, `SoapReportClient`, `pytest`, `test_exchange_rates_tasks.py`, `gam_metrics_tasks.py`?**
+  _High betweenness centrality (0.128) - this node is a cross-community bridge._
 - **Are the 57 inferred relationships involving `Services` (e.g. with `OpenExchangeRates` and `RestGamClient`) actually correct?**
   _`Services` has 57 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `avant-worker` to the rest of the system?**
   _1 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `test_exchange_rates_tasks.py` be split into smaller, more focused modules?**
   _Cohesion score 0.05794556628621598 - nodes in this community are weakly interconnected._
-- **Why does `SoapGamWriter` connect `test_exchange_rates_tasks.py` to `adapters/__init__.py`, `services.py`, `Services`, `gam_reports.py`, `test_gam_tool_tasks.py`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
+- **Why does `SoapGamWriter` connect `test_exchange_rates_tasks.py` to `adapters/__init__.py`, `soap_writer`, `services.py`, `Services`, `gam_reports.py`?**
+  _High betweenness centrality (0.111) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `company()` (e.g. with `Services` and `.trusted_uow()`) actually correct?**
   _`company()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **Should `test_checklist_tasks.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.05357142857142857 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06825396825396825 - nodes in this community are weakly interconnected._

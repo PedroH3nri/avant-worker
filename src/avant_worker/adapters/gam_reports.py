@@ -119,10 +119,13 @@ class SoapReportClient:
 
 
 def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:
-    """O mesmo ``reportQuery`` do unified-sync, com o id do ad unit e o código do país."""
-    dimensions = ["DATE", "DEVICE_CATEGORY_NAME", "AD_UNIT_ID", "AD_UNIT_NAME", "COUNTRY_CODE"]
+    """O ``reportQuery`` do unified-sync, com o id do ad unit e o código do país; o de key-value
+    vem sem dispositivo, que o core não guarda nesse nível (core#230)."""
+    dimensions = ["DATE", "AD_UNIT_ID", "AD_UNIT_NAME", "COUNTRY_CODE"]
     if kind is ReportKind.KEY_VALUE:
-        dimensions.insert(2, "CUSTOM_CRITERIA")
+        dimensions.insert(1, "CUSTOM_CRITERIA")
+    else:
+        dimensions.insert(1, "DEVICE_CATEGORY_NAME")
     return {
         "dimensions": dimensions,
         "columns": [REVENUE_COLUMN, *COUNT_COLUMNS.values()],

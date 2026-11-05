@@ -33,6 +33,8 @@ from avant_core.gam.client.errors import GamError, GamUnavailable
 from avant_core.gam.networks.enums import ConnectionType, Delegation
 from avant_core.gam.networks.models import Network
 from avant_core.gam.sync.services import sync_service
+from avant_core.metrics.enums import MetricSource
+from avant_core.metrics.models import DateRange
 from avant_core.metrics.services import StoredMetrics, store_gam_report
 
 from avant_worker.adapters.events import METRICS_UPDATED, publish
@@ -178,11 +180,23 @@ def _reads_groone_network(network: Network) -> bool:
     )
 
 
+SOURCE_OF = {
+    ReportKind.AD_UNIT: MetricSource.GAM,
+    ReportKind.KEY_VALUE: MetricSource.GAM_KEY_VALUES,
+}
+
+
 def _store(
     services: Services, network: Network, kind: ReportKind, start: date, end: date
 ) -> StoredMetrics:
-    """Baixa um relatório e grava as linhas com o caso de uso do avant-core."""
+    """Baixa um relatório e grava as linhas com o caso de uso do avant-core; o relatório
+    substitui a base da sua fonte no período, para o que sumiu do GAM sumir também."""
     rows = services.reports.report(network.network_code, kind, start, end)
     return store_gam_report(
-        services.uow(network.company_id), network_id=network.id, rows=rows, clock=services.clock
+        services.uow(network.company_id),
+        network_id=network.id,
+        rows=rows,
+        clock=services.clock,
+        period=DateRange(start, end),
+        source=SOURCE_OF[kind],
     )
