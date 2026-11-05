@@ -78,6 +78,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
         task_send_sent_event=True,
         broker_connection_retry_on_startup=True,
         beat_schedule={
+            "key-values": {"task": "avant.gam.process_key_values", "schedule": 30.0},
+            "key-value-networks": {
+                "task": "avant.gam.refresh_key_value_networks",
+                "schedule": 300.0,
+            },
             "maintenance-purge": {
                 "task": "avant.default.purge_expired",
                 "schedule": crontab(hour=4, minute=0),
