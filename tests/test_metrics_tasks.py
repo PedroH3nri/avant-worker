@@ -109,17 +109,19 @@ def test_report_is_read_from_a_temporary_file_as_it_streams(
 
     source = SoapReportClient("chave.json", version="v202508")
     monkeypatch.setattr(source, "_client", lambda network_code: Client())
-    rows = list(source.report("123", ReportKind.AD_UNIT, DAY, DAY))
+    with source.report("123", ReportKind.AD_UNIT, DAY, DAY) as report:
+        rows = list(report)
     assert [row.revenue_micros for row in rows] == [1_500_000, 0]
     assert not isinstance(written[0], io.BytesIO)
 
 
 def _soap_source(
-    monkeypatch: pytest.MonkeyPatch, payload: bytes
+    monkeypatch: pytest.MonkeyPatch, payload: bytes, files: list[io.BufferedIOBase] | None = None
 ) -> tuple[SoapReportClient, list[str]]:
     """Um SoapReportClient com um downloader falso que grava ``payload``; a lista recebe
-    "baixado" quando o download termina."""
+    "baixado" quando o download termina e ``files`` recebe o arquivo de destino."""
     events: list[str] = []
+    destinations = files if files is not None else []
 
     class Downloader:
         """O downloader do googleads: espera o relatório e escreve o conteúdo no arquivo."""
@@ -133,6 +135,7 @@ def _soap_source(
         ) -> None:
             """Escreve o conteúdo no arquivo que recebeu."""
             target.write(payload)
+            destinations.append(target)
             events.append("baixado")
 
     class Client:
@@ -149,9 +152,9 @@ def _soap_source(
 
 def test_report_downloads_before_the_rows_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
     source, events = _soap_source(monkeypatch, gzip.compress(AD_UNIT_CSV.encode()))
-    rows = source.report("123", ReportKind.AD_UNIT, DAY, DAY)
-    assert events == ["baixado"]
-    assert [row.revenue_micros for row in rows] == [1_500_000, 0]
+    with source.report("123", ReportKind.AD_UNIT, DAY, DAY) as rows:
+        assert events == ["baixado"]
+        assert [row.revenue_micros for row in rows] == [1_500_000, 0]
 
 
 @pytest.mark.parametrize(
@@ -163,8 +166,40 @@ def test_a_broken_report_file_is_a_temporary_failure(
     monkeypatch: pytest.MonkeyPatch, payload: bytes
 ) -> None:
     source, _events = _soap_source(monkeypatch, payload)
-    with pytest.raises(GamUnavailable):
-        list(source.report("123", ReportKind.AD_UNIT, DAY, DAY))
+    with pytest.raises(GamUnavailable), source.report("123", ReportKind.AD_UNIT, DAY, DAY) as rows:
+        list(rows)
+
+
+HEADER_ONLY = AD_UNIT_CSV.splitlines(keepends=True)[0]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"", gzip.compress(b""), gzip.compress(b"coluna,qualquer\n1,2\n")],
+    ids=["zero-bytes", "gzip-vazio", "sem-data"],
+)
+def test_a_report_without_the_csv_header_is_a_temporary_failure(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes
+) -> None:
+    source, _events = _soap_source(monkeypatch, payload)
+    with pytest.raises(GamUnavailable), source.report("123", ReportKind.AD_UNIT, DAY, DAY) as rows:
+        list(rows)
+
+
+def test_a_report_with_only_the_header_is_an_empty_period(monkeypatch: pytest.MonkeyPatch) -> None:
+    source, _events = _soap_source(monkeypatch, gzip.compress(HEADER_ONLY.encode()))
+    with source.report("123", ReportKind.AD_UNIT, DAY, DAY) as rows:
+        assert list(rows) == []
+
+
+def test_the_downloaded_file_closes_even_if_nobody_reads_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files: list[io.BufferedIOBase] = []
+    source, _events = _soap_source(monkeypatch, gzip.compress(AD_UNIT_CSV.encode()), files)
+    with pytest.raises(RuntimeError), source.report("123", ReportKind.AD_UNIT, DAY, DAY):
+        raise RuntimeError("o banco caiu antes de ler as linhas")
+    assert files[0].closed
 
 
 def test_report_query_matches_unified_sync() -> None:

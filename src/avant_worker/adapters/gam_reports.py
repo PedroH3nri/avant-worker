@@ -16,7 +16,7 @@ import tempfile
 import time
 import zlib
 from collections.abc import Iterable, Iterator
-from contextlib import ExitStack
+from contextlib import contextmanager
 from datetime import date
 from enum import StrEnum
 from typing import IO, Any
@@ -78,17 +78,19 @@ class SoapReportClient:
         self._version = version or sorted(ad_manager._SERVICE_MAP)[-1]
         self._oauth: oauth2.GoogleServiceAccountClient | None = None
 
+    @contextmanager
     def report(
         self, network_code: str, kind: ReportKind, start: date, end: date
-    ) -> Iterator[GamReportRow]:
-        """Baixa o relatório do período para um arquivo temporário já na chamada, antes de
-        quem grava abrir a transação, e devolve as linhas lidas desse arquivo aos poucos."""
-        with ExitStack() as cleanup:
-            downloaded = cleanup.enter_context(tempfile.TemporaryFile())
+    ) -> Iterator[Iterator[GamReportRow]]:
+        """Baixa o relatório ao entrar no ``with``, antes de quem grava abrir a transação, e entrega
+        as linhas lidas aos poucos; o arquivo fecha na saída, mesmo que ninguém as leia."""
+        with tempfile.TemporaryFile() as downloaded:
             self._download(network_code, report_query(kind, start, end), downloaded)
+            if downloaded.tell() == 0:
+                raise GamUnavailable("o GAM devolveu um relatório vazio")
             downloaded.seek(0)
-            cleanup.pop_all()
-        return _read_downloaded(downloaded, kind)
+            with gzip.GzipFile(fileobj=downloaded) as content:
+                yield _read_rows(content, kind)
 
     def _download(self, network_code: str, query: dict[str, Any], target: IO[bytes]) -> None:
         """Roda o relatório na network, espera terminar e grava o CSV comprimido no arquivo."""
@@ -123,14 +125,13 @@ class SoapReportClient:
         return ad_manager.AdManagerClient(self._oauth, APPLICATION_NAME, network_code=network_code)
 
 
-def _read_downloaded(downloaded: IO[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
-    """As linhas do CSV comprimido no arquivo baixado; fecha o arquivo no fim e trata um gzip
-    corrompido ou truncado como falha temporária, para a tarefa tentar de novo."""
-    with downloaded, gzip.GzipFile(fileobj=downloaded) as content:
-        try:
-            yield from parse_report(content, kind)
-        except (EOFError, gzip.BadGzipFile, zlib.error) as error:
-            raise GamUnavailable(f"o relatório do GAM veio corrompido: {error}") from error
+def _read_rows(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
+    """As linhas do CSV comprimido; um gzip corrompido ou truncado é falha temporária, para a
+    tarefa tentar de novo."""
+    try:
+        yield from parse_report(content, kind)
+    except (EOFError, gzip.BadGzipFile, zlib.error) as error:
+        raise GamUnavailable(f"o relatório do GAM veio corrompido: {error}") from error
 
 
 def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:
@@ -153,9 +154,11 @@ def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:
 
 
 def parse_report(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
-    """Lê o CSV_DUMP linha a linha; no relatório por key-value, linha sem ``chave=valor`` fica
-    de fora."""
+    """Lê o CSV_DUMP linha a linha; sem o cabeçalho com a data é falha temporária, nunca período
+    vazio, e no key-value a linha sem ``chave=valor`` fica de fora."""
     reader = csv.DictReader(line.decode("utf-8-sig") for line in content)
+    if f"{DIMENSION_PREFIX}DATE" not in (reader.fieldnames or ()):
+        raise GamUnavailable("o relatório do GAM veio sem o cabeçalho do CSV")
     for record in reader:
         custom_key: str | None = None
         custom_value: str | None = None
