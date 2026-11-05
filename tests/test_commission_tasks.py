@@ -20,6 +20,7 @@ from avant_worker.tasks.commissions import (
     previous_month,
     transfer_clients,
 )
+from tests.conftest import refresh_levels
 from tests.test_gam_tasks import company, network
 
 
@@ -100,6 +101,7 @@ def seller_scenario(services: Services, revenue_day_offset: int = 0) -> tuple[Co
                 )
             ]
         )
+        refresh_levels(uow)
         uow.commit()
     return client, today - timedelta(days=revenue_day_offset)
 

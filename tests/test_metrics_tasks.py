@@ -1,3 +1,5 @@
+import gzip
+import io
 from datetime import date, timedelta
 from typing import Any
 
@@ -9,6 +11,7 @@ from avant_core.metrics.models import GamCounts, GamReportRow
 from sqlalchemy import text
 
 from avant_worker.adapters import ReportKind, parse_report, report_query
+from avant_worker.adapters.gam_reports import SoapReportClient
 from avant_worker.app import _route, app
 from avant_worker.services import Services
 from avant_worker.tasks.gam import sync_network
@@ -59,7 +62,7 @@ def row(gam_id: str, revenue: int, **custom: str) -> GamReportRow:
 
 
 def test_parse_ad_unit_report() -> None:
-    first, second = parse_report(AD_UNIT_CSV.encode(), ReportKind.AD_UNIT)
+    first, second = parse_report(io.BytesIO(AD_UNIT_CSV.encode()), ReportKind.AD_UNIT)
     assert first.ad_unit_path == "acai.com.br/topo" and first.gam_ad_unit_id == "u2"
     assert first.revenue_micros == 1_500_000 and first.country_code == "BR"
     assert first.counts == GamCounts(100, 5, 70, 95, 3, 120, 90)
@@ -73,14 +76,49 @@ def test_parse_key_value_report_skips_rows_without_criteria() -> None:
         "2026-11-01,Tablet,utm_source=fb=x,u1,acai.com.br,BR\n"
         "2026-11-01,Tablet,,u1,acai.com.br,BR\n"
     )
-    (only,) = parse_report(("﻿" + content).encode(), ReportKind.KEY_VALUE)
+    (only,) = parse_report(io.BytesIO(("﻿" + content).encode()), ReportKind.KEY_VALUE)
     assert (only.custom_key, only.custom_value) == ("utm_source", "fb=x")
     assert only.ad_unit_path == "acai.com.br" and only.revenue_micros == 0
 
 
+def test_report_is_read_from_a_temporary_file_as_it_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    written: list[object] = []
+
+    class Downloader:
+        """O downloader do googleads: espera o relatório e escreve o gzip no arquivo."""
+
+        def WaitForReport(self, job: object, poll: int) -> str:
+            """Devolve o id do relatório pronto."""
+            return "job-1"
+
+        def DownloadReportToFile(
+            self, job_id: str, export_format: str, target: io.BufferedIOBase
+        ) -> None:
+            """Escreve o CSV comprimido no arquivo que recebeu."""
+            written.append(target)
+            target.write(gzip.compress(AD_UNIT_CSV.encode()))
+
+    class Client:
+        """O cliente da network com o downloader."""
+
+        def GetDataDownloader(self, version: str) -> Downloader:
+            """O downloader do relatório."""
+            return Downloader()
+
+    source = SoapReportClient("chave.json", version="v202508")
+    monkeypatch.setattr(source, "_client", lambda network_code: Client())
+    rows = list(source.report("123", ReportKind.AD_UNIT, DAY, DAY))
+    assert [row.revenue_micros for row in rows] == [1_500_000, 0]
+    assert not isinstance(written[0], io.BytesIO)
+
+
 def test_report_query_matches_unified_sync() -> None:
     query = report_query(ReportKind.KEY_VALUE, DAY, DAY + timedelta(days=1))
-    assert query["dimensions"][2] == "CUSTOM_CRITERIA"
+    assert "CUSTOM_CRITERIA" in query["dimensions"]
+    assert "DEVICE_CATEGORY_NAME" not in query["dimensions"]
+    assert "DEVICE_CATEGORY_NAME" in report_query(ReportKind.AD_UNIT, DAY, DAY)["dimensions"]
     assert query["adUnitView"] == "HIERARCHICAL" and query["reportCurrency"] == "USD"
     assert query["endDate"] == {"year": 2026, "month": 11, "day": 2}
     assert len(query["columns"]) == 8
@@ -114,13 +152,19 @@ def test_sync_metrics_stores_both_reports_idempotently(services: Services) -> No
     assert result["rows_without_site"] == 0
     assert [call[1] for call in source.calls] == [ReportKind.AD_UNIT, ReportKind.KEY_VALUE]
     sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-02").get()
-    assert count(services, "metrics.gam_daily") == 1
-    assert count(services, "metrics.gam_key_value_daily") == 1
+    assert count(services, "metrics.gam_ad_unit_daily_detail") == 1
+    assert count(services, "metrics.gam_key_value_daily_detail") == 1
     with services.uow(owner.id) as uow:
         gross_revenue = uow.session.execute(
-            text("SELECT revenue_micros, site_id IS NOT NULL FROM metrics.gam_daily")
+            text("SELECT revenue_micros, site_id IS NOT NULL FROM metrics.gam_domain_daily")
         ).one()
     assert tuple(gross_revenue) == (1_500_000, True)
+
+    source.rows[("123", ReportKind.AD_UNIT)] = []
+    sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-02").get()
+    assert count(services, "metrics.gam_ad_unit_daily_detail") == 0
+    assert count(services, "metrics.gam_network_daily") == 0
+    assert count(services, "metrics.gam_key_value_daily_detail") == 1
 
 
 def test_sync_metrics_skips_manage_inventory_and_records_permanent_errors(

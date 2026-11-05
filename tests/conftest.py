@@ -8,12 +8,15 @@ por network (sem ele, o teste da trava é pulado). O GAM é sempre o de ``fake_g
 
 import os
 from collections.abc import Iterator
+from datetime import date
 
 import pytest
 import redis
 from alembic import command
 from alembic.config import Config
+from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
+from avant_core.metrics.models import DateRange
 from avant_core.shared.clock import SystemClock
 from sqlalchemy import Engine, create_engine, text
 
@@ -47,8 +50,14 @@ TABLES = (
     "metrics.mcm_earnings",
     "metrics.exchange_rates",
     "metrics.page_views_hourly",
-    "metrics.gam_daily",
+    "metrics.gam_network_daily",
+    "metrics.gam_network_daily_detail",
+    "metrics.gam_domain_daily",
+    "metrics.gam_domain_daily_detail",
+    "metrics.gam_ad_unit_daily",
+    "metrics.gam_ad_unit_daily_detail",
     "metrics.gam_key_value_daily",
+    "metrics.gam_key_value_daily_detail",
     "ad_units",
     "sites",
     "network_sync_runs",
@@ -111,3 +120,10 @@ def services(engine: Engine) -> Iterator[Services]:
         for key in r.scan_iter("avant:lock:*"):
             r.delete(key)
         r.close()
+
+
+def refresh_levels(uow: SqlAlchemyUnitOfWork) -> None:
+    """Regrava os níveis das métricas das networks gravadas direto na base (sem o relatório)."""
+    query = "SELECT DISTINCT network_id FROM metrics.gam_ad_unit_daily_detail"
+    for network_id in uow.session.execute(text(query)).scalars():
+        uow.gam_metrics.refresh_levels(network_id, DateRange(date(2000, 1, 1), date(2100, 1, 1)))
