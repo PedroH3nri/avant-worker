@@ -36,6 +36,7 @@ OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "gam_key_values",
     "gam_tool_runs",
     "daily_commissions",
     "commission_deductions",
@@ -117,8 +118,9 @@ def services(engine: Engine) -> Iterator[Services]:
             conn.execute(text(f"DELETE FROM {table}"))
     owner.dispose()
     if r is not None:
-        for key in r.scan_iter("avant:lock:*"):
-            r.delete(key)
+        for pattern in ("avant:lock:*", "kv:*"):
+            for key in r.scan_iter(pattern):
+                r.delete(key)
         r.close()
 
 

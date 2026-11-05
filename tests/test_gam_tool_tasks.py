@@ -47,6 +47,11 @@ class MemoryWriter:
         self.created.append("values")
         return len(values)
 
+    def ensure_key_values(self, network_code: str, key_id: str, values: list[str]) -> list[str]:
+        """Cria os valores do tráfego."""
+        self.created.append("traffic_values")
+        return values
+
     def find_order(self, network_code: str, name: str) -> GamOrderRef | None:
         """Sem order."""
         return None
