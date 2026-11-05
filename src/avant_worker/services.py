@@ -7,7 +7,7 @@ na primeira tarefa, nunca herda o do pai.
 import os
 import uuid
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -39,8 +39,8 @@ class ReportSource(Protocol):
 
     def report(
         self, network_code: str, kind: ReportKind, start: date, end: date
-    ) -> Iterable[GamReportRow]:
-        """Linhas do relatório da network no período."""
+    ) -> AbstractContextManager[Iterator[GamReportRow]]:
+        """Linhas do relatório da network no período, válidas dentro do ``with``."""
         ...
 
 
