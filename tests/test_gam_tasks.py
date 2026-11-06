@@ -123,7 +123,7 @@ def test_failed_check_stops_before_importing(services: Services) -> None:
     client.admin_of.clear()
 
     result = sync_network.delay(str(c.id), str(n.id)).get()
-    assert result == {"test": {"ok": False, "status": "error"}}
+    assert result == {"test": {"ok": False, "status": "pending"}}
     assert ("list_sites", "123") not in client.calls
     with services.uow(c.id) as uow:
         saved = uow.networks.get(n.id)
@@ -163,11 +163,20 @@ def test_check_access_and_schedulers(services: Services) -> None:
     assert count(services, "sites") == 1
 
 
-def test_discover_mcm_creates_network_and_imports(
+def test_discover_mcm_activates_the_registered_network(
     services: Services, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
     c = company(services, "dono@acai.com.br")
+    registered = Network(
+        company_id=c.id,
+        network_code="123",
+        connection_type=ConnectionType.MCM,
+        created_at=services.clock.now(),
+    )
+    with services.uow(c.id) as uow:
+        uow.networks.add(registered)
+        uow.commit()
     client = fake(services)
     client.networks[GROONE_NETWORK] = GamNetworkInfo(GROONE_NETWORK, "Groone", is_test=False)
     client.children = [
@@ -194,7 +203,7 @@ def test_discover_mcm_creates_network_and_imports(
         "created": 1,
         "candidates": 1,
         "disconnected": 0,
-        "updated": 0,
+        "updated": 1,
     }
     with services.uow(c.id) as uow:
         (n,) = uow.networks.list_for_company(c.id)
@@ -271,8 +280,9 @@ def test_sync_publishes_network_events(services: Services) -> None:
     while (message := pubsub.get_message(timeout=0.5)) is not None:
         events.append(json.loads(message["data"]))
     pubsub.close()
-    # Teste, sites e ad units: a tela busca o estado de novo a cada aviso.
-    assert events == [{"type": "network.updated", "data": {"network_id": str(n.id)}}] * 3
+    network_events = [event for event in events if event["type"] == "network.updated"]
+    assert network_events == [{"type": "network.updated", "data": {"network_id": str(n.id)}}] * 3
+    assert {event["type"] for event in events} == {"network.updated", "metrics.updated"}
 
 
 def test_publish_without_redis_is_a_no_op() -> None:

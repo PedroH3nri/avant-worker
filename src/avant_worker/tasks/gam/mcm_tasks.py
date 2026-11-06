@@ -1,7 +1,9 @@
 """Tarefas do MCM na network da Groone (fila ``gam``), com ``trusted_uow``.
 
-- ``discover_mcm``: de hora em hora, lê os child publishers da network da Groone. Para
-  cada network nova, pede a sincronização e o histórico das métricas (``backfill_metrics``).
+- ``discover_mcm``: de hora em hora, lê os child publishers da network da Groone e atualiza
+  as networks cadastradas (nada é ligado pelo e-mail, core#289). Para cada network pendente
+  com o MCM aprovado, pede o teste e a sincronização; o histórico das métricas sai do teste
+  quando ela fica ativa.
 - ``sync_contracts``: de hora em hora, depois da descoberta, lê o revshare aprovado de cada
   child publisher Manage Account e troca o contrato da network quando ele muda.
 """
@@ -14,7 +16,6 @@ from avant_core.gam.sync.services import sync_service
 from avant_worker.app import app
 from avant_worker.services import get_services
 from avant_worker.tasks.gam.network_tasks import LOCK_SECONDS, RETRY_FOR, sync_network
-from avant_worker.tasks.metrics.gam_metrics_tasks import backfill_metrics
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -28,7 +29,7 @@ log = logging.getLogger("avant.worker.gam")
     max_retries=4,
 )
 def discover_mcm() -> dict[str, int]:
-    """trusted_uow: a descoberta liga networks a Empresas pelo e-mail do dono."""
+    """trusted_uow: a descoberta percorre as networks de todas as Empresas."""
     services = get_services()
     with services.lock("gam:discover_mcm", timeout=LOCK_SECONDS) as locked:
         if not locked:
@@ -38,7 +39,6 @@ def discover_mcm() -> dict[str, int]:
         )
     for company_id, network_id in found.created:
         sync_network.delay(str(company_id), str(network_id))
-        backfill_metrics.delay(str(company_id), str(network_id))
     counts = {
         "created": len(found.created),
         "candidates": found.candidates,
