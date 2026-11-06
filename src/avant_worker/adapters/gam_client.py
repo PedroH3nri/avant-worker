@@ -44,9 +44,6 @@ SCOPES = ("https://www.googleapis.com/auth/admanager.readonly",)
 
 PAGE_SIZE = 1000
 
-# Quanto tempo a lista de child publishers da Groone vale antes de ser lida de novo no GAM.
-CHILD_PUBLISHERS_CACHE_SECONDS = 300
-
 # Papel predefinido "Administrador" do Ad Manager (os papéis do Google têm id negativo).
 ADMINISTRATOR_ROLE_ID = "-1"
 
@@ -65,7 +62,6 @@ class RestGamClient:
         self._email = service_account_email
         self._http = http or httpx.Client(base_url=BASE_URL, timeout=30.0)
         self._auth_request = _HttpxAuthRequest(self._http)
-        self._children: dict[str, tuple[float, list[GamChildPublisher]]] = {}
 
     @classmethod
     def from_key_file(cls, path: str) -> "RestGamClient":
@@ -97,18 +93,8 @@ class RestGamClient:
         role = str(current_user.get("role") or "").rsplit("/", 1)[-1]
         return bool(current_user.get("active", True)) and role == ADMINISTRATOR_ROLE_ID
 
-    def list_child_publishers(self, network_code: str) -> list[GamChildPublisher]:
-        """Lista as networks filhas do MCM da network, guardando a lista por alguns minutos:
-        cada teste de network do MCM confere o convite nela e a cota do GAM é da Groone."""
-        cached = self._children.get(network_code)
-        if cached is not None and time.monotonic() - cached[0] < CHILD_PUBLISHERS_CACHE_SECONDS:
-            return cached[1]
-        children = list(self._read_child_publishers(network_code))
-        self._children[network_code] = (time.monotonic(), children)
-        return children
-
-    def _read_child_publishers(self, network_code: str) -> Iterator[GamChildPublisher]:
-        """Lê do GAM todas as páginas das networks filhas do MCM."""
+    def list_child_publishers(self, network_code: str) -> Iterator[GamChildPublisher]:
+        """Lista as networks filhas do MCM da network."""
         for item in self._list(f"networks/{network_code}/childPublishers", "childPublishers"):
             child_code = _last(item.get("childNetwork"))
             if not child_code:
