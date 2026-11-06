@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -185,8 +185,8 @@ wheels = [
 
 [[package]]
 name = "avant-core"
-version = "0.84.0"
-source = { git = "https://github.com/PedroH3nri/avant-core?tag=v0.84.0#f218c49ee898d4b81d52236892561f56f9e5c323" }
+version = "0.85.0"
+source = { git = "https://github.com/PedroH3nri/avant-core?tag=v0.85.0#cca2b32fda9e3142eb1afc2832407491d042e4f9" }
 dependencies = [
     { name = "alembic" },
     { name = "argon2-cffi" },
@@ -223,7 +223,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "avant-core", git = "https://github.com/PedroH3nri/avant-core?tag=v0.84.0" },
+    { name = "avant-core", git = "https://github.com/PedroH3nri/avant-core?tag=v0.85.0" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4,<6" },
     { name = "google-auth", specifier = ">=2.35" },
     { name = "googleads", specifier = ">=50" },

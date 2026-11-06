@@ -1,9 +1,11 @@
 """Tarefas de uma network do Google Ad Manager (fila ``gam``).
 
 - ``sync_network``: teste de acesso, sites e ad units de uma network, nessa ordem. A API
-  enfileira ao conectar e no "sincronizar agora"; a descoberta do MCM, para cada network
-  nova. Com ``test=False`` (agendador de 6 em 6 horas), só importa.
-- ``check_access``: só o teste de acesso, todo dia.
+  enfileira ao cadastrar e no "sincronizar agora"; a descoberta do MCM, de hora em hora, para
+  cada network pendente com o MCM aprovado. Com ``test=False`` (agendador de 6 em 6 horas),
+  só importa. A primeira importação completa da network pede o histórico das métricas,
+  depois dos ad units, para as linhas do histórico já saírem com o site.
+- ``check_access``: só o teste de acesso, todo dia; a pendente que fica ativa é importada.
 - ``schedule_*``: o agendador chama e elas espalham uma tarefa por network ativa.
 
 Cada network roda com o Unit of Work da própria Empresa (RLS) e uma trava no Redis, para
@@ -16,6 +18,7 @@ Tudo aqui é idempotente: a importação é upsert pelo id do GAM.
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Any
 
 from avant_core.gam.client.errors import GamError, GamUnavailable
@@ -25,6 +28,7 @@ from celery import Task
 from avant_worker.adapters.events import NETWORK_UPDATED, publish
 from avant_worker.app import app
 from avant_worker.services import Services, get_services
+from avant_worker.tasks.metrics.gam_metrics_tasks import backfill_metrics
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -54,6 +58,7 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
             return {"skipped": "locked"}
         result: dict[str, Any] = {}
         gam, clock, mailer = services.gam, services.clock, services.mailer
+        never_imported = _last_import(services, company_uuid, network_uuid) is None
         try:
             if test:
                 check = sync_service.check_network(
@@ -86,6 +91,8 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                 clock=clock,
                 mailer=mailer,
             )
+            if never_imported and _last_import(services, company_uuid, network_uuid):
+                backfill_metrics.delay(company_id, network_id)
             _updated(services, company_uuid, network_uuid)
         except GamError as exc:
             # A etapa ficou registrada como falha.
@@ -129,6 +136,8 @@ def check_access(company_id: str, network_id: str) -> dict[str, Any]:
             )
         finally:
             _updated(services, company_uuid, network_uuid)
+    if check.first_connection:
+        sync_network.delay(company_id, network_id, test=False)
     return {"ok": check.ok, "status": check.status.value, "error": check.error}
 
 
@@ -150,6 +159,16 @@ def _fan_out(task: "Task[Any, Any]", kwargs: dict[str, Any]) -> int:
     for company_id, network_id in networks:
         task.delay(str(company_id), str(network_id), **kwargs)
     return len(networks)
+
+
+def _last_import(
+    services: Services, company_id: uuid.UUID, network_id: uuid.UUID
+) -> datetime | None:
+    """Quando os ad units da network foram importados pela última vez: o histórico depende
+    desse dado gravado, e não do evento, para uma tarefa repetida não perder o pedido."""
+    with services.uow(company_id) as uow:
+        network = uow.networks.get(network_id)
+        return network.last_synced_at if network else None
 
 
 def _updated(services: Services, company_id: uuid.UUID, network_id: uuid.UUID) -> None:

@@ -123,7 +123,7 @@ def test_failed_check_stops_before_importing(services: Services) -> None:
     client.admin_of.clear()
 
     result = sync_network.delay(str(c.id), str(n.id)).get()
-    assert result == {"test": {"ok": False, "status": "error"}}
+    assert result == {"test": {"ok": False, "status": "pending"}}
     assert ("list_sites", "123") not in client.calls
     with services.uow(c.id) as uow:
         saved = uow.networks.get(n.id)
@@ -148,6 +148,56 @@ def test_permanent_error_during_import_is_recorded_not_retried(services: Service
         assert saved.status is NetworkStatus.CONNECTED  # só vira erro na terceira
 
 
+def backfills(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    from avant_worker.tasks.metrics import backfill_metrics
+
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        backfill_metrics,
+        "delay",
+        lambda company_id, network_id: asked.append((company_id, network_id)),
+    )
+    return asked
+
+
+def test_first_complete_import_asks_for_the_history_once(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = backfills(monkeypatch)
+    owner = company(services)
+    connected = network(services, owner)
+    client = fake(services)
+    inventory(client)
+    read_ad_units = client.list_ad_units
+
+    def denied(network_code: str) -> list[GamAdUnit]:
+        """Falha a leitura dos ad units depois do teste e dos sites."""
+        raise GamAccessDenied("403")
+
+    monkeypatch.setattr(client, "list_ad_units", denied)
+    sync_network.delay(str(owner.id), str(connected.id)).get()
+    assert asked == []
+
+    monkeypatch.setattr(client, "list_ad_units", read_ad_units)
+
+    sync_network.delay(str(owner.id), str(connected.id), test=False).get()
+    sync_network.delay(str(owner.id), str(connected.id), test=False).get()
+    assert asked == [(str(owner.id), str(connected.id))]
+
+
+def test_check_access_imports_before_asking_for_the_history(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = backfills(monkeypatch)
+    owner = company(services)
+    connected = network(services, owner)
+    inventory(fake(services))
+
+    check_access.delay(str(owner.id), str(connected.id)).get()
+    assert asked == [(str(owner.id), str(connected.id))]
+    assert count(services, "ad_units") == 2
+
+
 def test_check_access_and_schedulers(services: Services) -> None:
     c = company(services)
     n = network(services, c)
@@ -163,11 +213,21 @@ def test_check_access_and_schedulers(services: Services) -> None:
     assert count(services, "sites") == 1
 
 
-def test_discover_mcm_creates_network_and_imports(
+def test_discover_mcm_activates_the_registered_network(
     services: Services, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
     c = company(services, "dono@acai.com.br")
+    registered = Network(
+        company_id=c.id,
+        network_code="123",
+        connection_type=ConnectionType.MCM,
+        created_at=services.clock.now(),
+        confirmed_at=services.clock.now(),
+    )
+    with services.uow(c.id) as uow:
+        uow.networks.add(registered)
+        uow.commit()
     client = fake(services)
     client.networks[GROONE_NETWORK] = GamNetworkInfo(GROONE_NETWORK, "Groone", is_test=False)
     client.children = [
@@ -194,7 +254,7 @@ def test_discover_mcm_creates_network_and_imports(
         "created": 1,
         "candidates": 1,
         "disconnected": 0,
-        "updated": 0,
+        "updated": 1,
     }
     with services.uow(c.id) as uow:
         (n,) = uow.networks.list_for_company(c.id)
@@ -271,8 +331,9 @@ def test_sync_publishes_network_events(services: Services) -> None:
     while (message := pubsub.get_message(timeout=0.5)) is not None:
         events.append(json.loads(message["data"]))
     pubsub.close()
-    # Teste, sites e ad units: a tela busca o estado de novo a cada aviso.
-    assert events == [{"type": "network.updated", "data": {"network_id": str(n.id)}}] * 3
+    network_events = [event for event in events if event["type"] == "network.updated"]
+    assert network_events == [{"type": "network.updated", "data": {"network_id": str(n.id)}}] * 3
+    assert {event["type"] for event in events} == {"network.updated", "metrics.updated"}
 
 
 def test_publish_without_redis_is_a_no_op() -> None:
