@@ -148,6 +148,56 @@ def test_permanent_error_during_import_is_recorded_not_retried(services: Service
         assert saved.status is NetworkStatus.CONNECTED  # só vira erro na terceira
 
 
+def backfills(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    from avant_worker.tasks.metrics import backfill_metrics
+
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        backfill_metrics,
+        "delay",
+        lambda company_id, network_id: asked.append((company_id, network_id)),
+    )
+    return asked
+
+
+def test_first_complete_import_asks_for_the_history_once(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = backfills(monkeypatch)
+    owner = company(services)
+    connected = network(services, owner)
+    client = fake(services)
+    inventory(client)
+    read_ad_units = client.list_ad_units
+
+    def denied(network_code: str) -> list[GamAdUnit]:
+        """Falha a leitura dos ad units depois do teste e dos sites."""
+        raise GamAccessDenied("403")
+
+    monkeypatch.setattr(client, "list_ad_units", denied)
+    sync_network.delay(str(owner.id), str(connected.id)).get()
+    assert asked == []
+
+    monkeypatch.setattr(client, "list_ad_units", read_ad_units)
+
+    sync_network.delay(str(owner.id), str(connected.id), test=False).get()
+    sync_network.delay(str(owner.id), str(connected.id), test=False).get()
+    assert asked == [(str(owner.id), str(connected.id))]
+
+
+def test_check_access_imports_before_asking_for_the_history(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = backfills(monkeypatch)
+    owner = company(services)
+    connected = network(services, owner)
+    inventory(fake(services))
+
+    check_access.delay(str(owner.id), str(connected.id)).get()
+    assert asked == [(str(owner.id), str(connected.id))]
+    assert count(services, "ad_units") == 2
+
+
 def test_check_access_and_schedulers(services: Services) -> None:
     c = company(services)
     n = network(services, c)
