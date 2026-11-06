@@ -232,6 +232,7 @@ def test_sync_metrics_stores_both_reports_idempotently(services: Services) -> No
     inventory(fake(services))
     sync_network.delay(str(owner.id), str(connected.id)).get()
     source = reports(services)
+    source.calls.clear()
     source.rows[("123", ReportKind.AD_UNIT)] = [row("u2", 1_000_000), row("u2", 500_000)]
     source.rows[("123", ReportKind.KEY_VALUE)] = [row("u2", 10, key="utm_source", value="fb")]
 

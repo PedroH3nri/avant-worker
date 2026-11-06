@@ -1,9 +1,10 @@
 """Tarefas de uma network do Google Ad Manager (fila ``gam``).
 
 - ``sync_network``: teste de acesso, sites e ad units de uma network, nessa ordem. A API
-  enfileira ao conectar e no "sincronizar agora"; a descoberta do MCM, para cada network
-  nova. Com ``test=False`` (agendador de 6 em 6 horas), só importa.
-- ``check_access``: só o teste de acesso, todo dia.
+  enfileira ao cadastrar e no "sincronizar agora"; a descoberta do MCM, de hora em hora, para
+  cada network pendente com o MCM aprovado. Com ``test=False`` (agendador de 6 em 6 horas),
+  só importa. Quando a network pendente fica ativa, pede o histórico das métricas.
+- ``check_access``: só o teste de acesso, todo dia; a pendente que fica ativa é importada.
 - ``schedule_*``: o agendador chama e elas espalham uma tarefa por network ativa.
 
 Cada network roda com o Unit of Work da própria Empresa (RLS) e uma trava no Redis, para
@@ -25,6 +26,7 @@ from celery import Task
 from avant_worker.adapters.events import NETWORK_UPDATED, publish
 from avant_worker.app import app
 from avant_worker.services import Services, get_services
+from avant_worker.tasks.metrics.gam_metrics_tasks import backfill_metrics
 
 log = logging.getLogger("avant.worker.gam")
 
@@ -65,6 +67,8 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                 )
                 _updated(services, company_uuid, network_uuid)
                 result["test"] = {"ok": check.ok, "status": check.status.value}
+                if check.first_connection:
+                    backfill_metrics.delay(company_id, network_id)
                 if not check.ok:
                     log.info(
                         "teste da network falhou",
@@ -129,6 +133,9 @@ def check_access(company_id: str, network_id: str) -> dict[str, Any]:
             )
         finally:
             _updated(services, company_uuid, network_uuid)
+    if check.first_connection:
+        sync_network.delay(company_id, network_id, test=False)
+        backfill_metrics.delay(company_id, network_id)
     return {"ok": check.ok, "status": check.status.value, "error": check.error}
 
 
