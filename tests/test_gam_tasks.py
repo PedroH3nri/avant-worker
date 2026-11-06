@@ -173,6 +173,7 @@ def test_discover_mcm_activates_the_registered_network(
         network_code="123",
         connection_type=ConnectionType.MCM,
         created_at=services.clock.now(),
+        confirmed_at=services.clock.now(),
     )
     with services.uow(c.id) as uow:
         uow.networks.add(registered)

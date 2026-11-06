@@ -175,6 +175,23 @@ def test_child_publishers() -> None:
     assert invalid.network_code == "789" and invalid.revshare is None
 
 
+def test_child_publishers_are_read_once_every_few_minutes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from avant_worker.adapters import gam_client
+
+    now = [1000.0]
+    monkeypatch.setattr("time.monotonic", lambda: now[0])
+    body = {"childPublishers": [{"childNetwork": "networks/123", "accountStatus": "APPROVED"}]}
+    gam, seen = client(lambda request: ok(body))
+    assert [child.network_code for child in gam.list_child_publishers("9")] == ["123"]
+    gam.list_child_publishers("9")
+    assert len(seen) == 1
+    now[0] += gam_client.CHILD_PUBLISHERS_CACHE_SECONDS
+    gam.list_child_publishers("9")
+    assert len(seen) == 2
+
+
 @pytest.mark.parametrize(
     ("status", "error"),
     [
