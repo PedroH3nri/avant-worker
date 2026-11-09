@@ -46,6 +46,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.alerts.alert_tasks",
             "avant_worker.tasks.schedules.schedule_tasks",
             "avant_worker.tasks.checklists.checklist_tasks",
+            "avant_worker.tasks.rewards.reward_tasks",
         ],
     )
     app.conf.update(
@@ -158,6 +159,14 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "commissions-close": {
                 "task": "avant.default.close_commissions",
                 "schedule": crontab(day_of_month="15-20", hour=5, minute=0),
+            },
+            "reward-events": {
+                "task": "avant.default.flush_reward_events",
+                "schedule": 60.0,
+            },
+            "reward-batches-purge": {
+                "task": "avant.default.purge_reward_batches",
+                "schedule": crontab(hour=4, minute=25),
             },
         },
     )
