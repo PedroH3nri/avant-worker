@@ -47,7 +47,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.purge_expired` | todo dia às 04:00 UTC | apaga sessões encerradas há mais de 30 dias e links de nova senha vencidos há mais de 7 |
 | `avant.gam.discover_mcm` | de hora em hora (minuto 5) | lê os child publishers da network da Groone: liga networks novas à Empresa do dono, guarda o MCM sem dono e desconecta o que foi encerrado |
 | `avant.gam.sync_contracts` | de hora em hora (minuto 10) | lê o revshare aprovado de cada child publisher MCM Manage Account e, quando muda, encerra o contrato ativo da network e cria outro |
-| `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem |
+| `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem; depois dos ad units, apaga do Redis o cache das páginas de reward em "mais recentes" dos sites da network |
 | `avant.gam.run_tool(run_id)` | quando a API abre uma execução das ferramentas do GAM | roda a configuração completa, o setup de anúncio, os key values ou o "Sincronizar agora" passo a passo (`execute_gam_tool` do core, escritas por SOAP em `adapters/gam_writer.py`, o único arquivo que escreve no GAM); avisa o painel interno com `gam_tool_run.updated`; sem retry automático |
 | `avant.gam.schedule_tests` | todo dia às 03:00 UTC | uma `avant.gam.check_access` por network ativa |
 | `avant.gam.schedule_imports` | de 6 em 6 horas (minuto 20) | uma `avant.gam.sync_network(test=False)` por network ativa |
@@ -70,6 +70,8 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.mail.notify_alerts(company_id)` | depois da conferência | um e-mail por alerta e dia para cada pessoa da lista, só dos disparos ainda sem aviso |
 | `avant.default.schedule_reports` | de hora em hora (minuto 2) | pede uma `avant.mail.deliver_reports` por Empresa com envio agendado na hora |
 | `avant.mail.deliver_reports(company_id)` | pelo agendador acima | roda o relatório ou o dashboard como cada pessoa da lista e manda o resumo com o CSV anexo; marca o horário antes de mandar, sem repetir |
+| `avant.default.flush_reward_events` | a cada minuto | esvazia `avant:reward:buffer` (eventos e contatos que o `reward.js` manda pela api): renomeia a lista para `avant:reward:processing:{lote}`, grava em pedaços de 5.000 com `record_reward_batch` (idempotente pelo lote) e apaga a chave; uma chave de processamento que sobrou é gravada na execução seguinte |
+| `avant.default.purge_reward_batches` | todo dia às 04:25 UTC | apaga os identificadores de lote de reward com mais de 7 dias |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.
