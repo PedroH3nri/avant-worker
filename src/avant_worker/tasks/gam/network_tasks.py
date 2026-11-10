@@ -28,6 +28,7 @@ from celery import Task
 from avant_worker.adapters.events import NETWORK_UPDATED, publish
 from avant_worker.app import app
 from avant_worker.services import Services, get_services
+from avant_worker.tasks.ad_tags.ad_tag_tasks import forget_network_ad_tags
 from avant_worker.tasks.metrics.gam_metrics_tasks import backfill_metrics
 from avant_worker.tasks.rewards.reward_tasks import forget_latest_reward_pages
 
@@ -93,6 +94,7 @@ def sync_network(company_id: str, network_id: str, test: bool = True) -> dict[st
                 mailer=mailer,
             )
             forget_latest_reward_pages(services, network_uuid)
+            forget_network_ad_tags(services, network_uuid)
             if never_imported and _last_import(services, company_uuid, network_uuid):
                 backfill_metrics.delay(company_id, network_id)
             _updated(services, company_uuid, network_uuid)

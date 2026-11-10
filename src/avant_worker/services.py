@@ -29,6 +29,7 @@ from avant_worker.adapters.exchange_rates import OpenExchangeRates
 from avant_worker.adapters.gam_client import RestGamClient
 from avant_worker.adapters.gam_reports import ReportKind, SoapReportClient
 from avant_worker.adapters.gam_writer import SoapGamWriter
+from avant_worker.adapters.geoip import GeoLiteCountries
 from avant_worker.adapters.page_fetcher import HttpPageFetcher
 from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
@@ -72,6 +73,14 @@ class EarningsSource(Protocol):
         ...
 
 
+class CountryLookup(Protocol):
+    """O que o flush das visitas da tag pede: o país de um IP."""
+
+    def country(self, ip: str | None) -> str | None:
+        """O nome do país em inglês, ou vazio quando não acha."""
+        ...
+
+
 class GamNotConfigured(RuntimeError):
     """Tarefa da fila gam num worker sem a chave da conta de serviço."""
 
@@ -91,6 +100,7 @@ class Services:
     earnings_override: "EarningsSource | None" = None
     page_fetcher_override: "PageFetcher | None" = None
     gam_writer_override: "GamWriter | None" = None
+    countries_override: "CountryLookup | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -102,6 +112,7 @@ class Services:
         self._earnings: EarningsSource | None = self.earnings_override
         self._page_fetcher: PageFetcher | None = self.page_fetcher_override
         self._gam_writer: GamWriter | None = self.gam_writer_override
+        self._countries: CountryLookup | None = self.countries_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -187,6 +198,13 @@ class Services:
                 self.settings.page_views_mongo_url, self.settings.page_views_mongo_database
             )
         return self._page_views
+
+    @property
+    def countries(self) -> "CountryLookup | None":
+        """O país pelo IP (GeoLite2); ``None`` quando o worker não tem a base."""
+        if self._countries is None and self.settings.geolite2_country_file:
+            self._countries = GeoLiteCountries(self.settings.geolite2_country_file)
+        return self._countries
 
     @property
     def exchange_rates(self) -> "ExchangeRateSource | None":
