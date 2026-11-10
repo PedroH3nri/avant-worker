@@ -38,7 +38,7 @@ from avant_core.metrics.models import DateRange
 from avant_core.metrics.services import StoredMetrics, store_gam_report
 
 from avant_worker.adapters.events import METRICS_UPDATED, publish
-from avant_worker.adapters.gam_reports import ReportKind
+from avant_worker.adapters.gam_reports import METRIC_REPORTS, ReportKind
 from avant_worker.app import app
 from avant_worker.services import Services, get_services
 
@@ -85,7 +85,9 @@ def sync_metrics(
             return {"skipped": "manage_inventory"}
         started = time.monotonic()
         try:
-            stored = [_store(services, network, kind, first_day, last_day) for kind in ReportKind]
+            stored = [
+                _store(services, network, kind, first_day, last_day) for kind in METRIC_REPORTS
+            ]
         except GamError as exc:
             if not exc.permanent:
                 raise

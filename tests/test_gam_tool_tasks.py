@@ -24,6 +24,7 @@ class MemoryWriter:
     def __init__(self) -> None:
         self.created: list[str] = []
         self.items: dict[str, str] = {}
+        self.values: dict[str, list[str]] = {}
 
     def target_network(self, network_code: str) -> GamTargetNetwork:
         """Moeda e raiz."""
@@ -45,6 +46,7 @@ class MemoryWriter:
     def create_key_values(self, network_code: str, key_id: str, values: list[str]) -> int:
         """Cria os valores."""
         self.created.append("values")
+        self.values[key_id] = values
         return len(values)
 
     def ensure_key_values(self, network_code: str, key_id: str, values: list[str]) -> list[str]:
@@ -168,7 +170,11 @@ def test_run_tool_configures_the_network(services: Services) -> None:
     )
     result = run_tool.delay(str(run.id)).get()
     assert result == {"state": "done", "error": None}
-    assert writer.created[:3] == ["keys", "values", "order"] and writer.created[-1] == "approve"
+    first_steps = [step for step in writer.created if step != "values"][:2]
+    assert first_steps == ["keys", "order"] and writer.created[-1] == "approve"
+    assert len(writer.values["k-groone_prices"]) == 200
+    assert writer.values["k-groone_prices"][:2] == ["0.50", "0.52"]
+    assert writer.values["k-groone_group"] == ["regra", "controle"]
     with services.trusted_uow() as uow:
         stored = uow.gam_tool_runs.get(run.id)
         saved = uow.networks.get(net.id)

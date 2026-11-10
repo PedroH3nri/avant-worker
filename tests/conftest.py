@@ -62,6 +62,12 @@ TABLES = (
     "metrics.page_view_events",
     "metrics.page_views_key_value_hourly",
     "metrics.ad_tag_daily",
+    "metrics.gam_key_value_hourly",
+    "price_rule_history",
+    "price_rule_configs",
+    "price_rules",
+    "price_rule_blocks",
+    "price_rule_settings",
     "ad_tags",
     "ad_units",
     "sites",
@@ -122,7 +128,7 @@ def services(engine: Engine) -> Iterator[Services]:
             conn.execute(text(f"DELETE FROM {table}"))
     owner.dispose()
     if r is not None:
-        for pattern in ("avant:lock:*", "kv:*"):
+        for pattern in ("avant:lock:*", "kv:*", "avant:price-floors:*", "avant:gam:currency:*"):
             for key in r.scan_iter(pattern):
                 r.delete(key)
         r.close()
