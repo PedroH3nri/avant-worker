@@ -20,6 +20,7 @@ from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
 from avant_core.mail import LogMailer, ResendMailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
+from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from avant_core.site_checklists.interfaces import PageFetcher
@@ -39,7 +40,13 @@ class ReportSource(Protocol):
     """O que as tarefas de métricas pedem ao GAM: as linhas de um relatório."""
 
     def report(
-        self, network_code: str, kind: ReportKind, start: date, end: date
+        self,
+        network_code: str,
+        kind: ReportKind,
+        start: date,
+        end: date,
+        *,
+        currency: str = REPORT_CURRENCY,
     ) -> AbstractContextManager[Iterator[GamReportRow]]:
         """Linhas do relatório da network no período, válidas dentro do ``with``."""
         ...

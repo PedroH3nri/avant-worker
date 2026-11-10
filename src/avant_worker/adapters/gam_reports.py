@@ -6,7 +6,8 @@ faz hoje com a mesma biblioteca (``googleads``). Este módulo só chama ``runRep
 ``getReportJobStatus`` e ``getReportDownloadUrlWithOptions``.
 
 Os relatórios são os dois do unified-sync: por ad unit e por key-value, com as mesmas
-oito colunas, em USD e com os ad units hierárquicos (``Ad unit 1``, ``Ad unit 2``...).
+oito colunas, em USD e com os ad units hierárquicos (``Ad unit 1``, ``Ad unit 2``...). O das
+regras de preço é o de key-value por hora, só com ``content_hash`` e na moeda da network.
 """
 
 import csv
@@ -29,6 +30,7 @@ from avant_core.gam.client.errors import (
 )
 from avant_core.metrics.models import GamCounts, GamReportRow
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
+from avant_core.price_rules.catalog import SEGMENT_KEY
 from google.auth import exceptions as auth_exceptions
 from googleads import ad_manager, errors, oauth2
 
@@ -64,10 +66,14 @@ log = logging.getLogger("avant.worker.gam")
 
 
 class ReportKind(StrEnum):
-    """Os dois relatórios do unified-sync."""
+    """Os dois relatórios do unified-sync e o por hora das regras de preço."""
 
     AD_UNIT = "ad_unit"
     KEY_VALUE = "key_value"
+    PRICE_RULE_HOURS = "price_rule_hours"
+
+
+METRIC_REPORTS = (ReportKind.AD_UNIT, ReportKind.KEY_VALUE)
 
 
 class SoapReportClient:
@@ -80,12 +86,19 @@ class SoapReportClient:
 
     @contextmanager
     def report(
-        self, network_code: str, kind: ReportKind, start: date, end: date
+        self,
+        network_code: str,
+        kind: ReportKind,
+        start: date,
+        end: date,
+        *,
+        currency: str = REPORT_CURRENCY,
     ) -> Iterator[Iterator[GamReportRow]]:
         """Baixa o relatório ao entrar no ``with``, antes de quem grava abrir a transação, e entrega
         as linhas lidas aos poucos; o arquivo fecha na saída, mesmo que ninguém as leia."""
         with tempfile.TemporaryFile() as downloaded:
-            self._download(network_code, report_query(kind, start, end), downloaded)
+            query = report_query(kind, start, end, currency=currency)
+            self._download(network_code, query, downloaded)
             if downloaded.tell() == 0:
                 raise GamUnavailable("o GAM devolveu um relatório vazio")
             downloaded.seek(0)
@@ -134,14 +147,18 @@ def _read_rows(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamReport
         raise GamUnavailable(f"o relatório do GAM veio corrompido: {error}") from error
 
 
-def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:
+def report_query(
+    kind: ReportKind, start: date, end: date, *, currency: str = REPORT_CURRENCY
+) -> dict[str, Any]:
     """O ``reportQuery`` do unified-sync, com o id do ad unit e o código do país; o de key-value
-    vem sem dispositivo, que o core não guarda nesse nível (core#230)."""
+    vem sem dispositivo (core#230) e o das regras de preço vem por hora, na moeda pedida."""
     dimensions = ["DATE", "AD_UNIT_ID", "AD_UNIT_NAME", "COUNTRY_CODE"]
-    if kind is ReportKind.KEY_VALUE:
-        dimensions.insert(1, "CUSTOM_CRITERIA")
-    else:
+    if kind is ReportKind.AD_UNIT:
         dimensions.insert(1, "DEVICE_CATEGORY_NAME")
+    else:
+        dimensions.insert(1, "CUSTOM_CRITERIA")
+    if kind is ReportKind.PRICE_RULE_HOURS:
+        dimensions.insert(1, "HOUR")
     return {
         "dimensions": dimensions,
         "columns": [REVENUE_COLUMN, *COUNT_COLUMNS.values()],
@@ -149,24 +166,26 @@ def report_query(kind: ReportKind, start: date, end: date) -> dict[str, Any]:
         "dateRangeType": "CUSTOM_DATE",
         "startDate": _soap_date(start),
         "endDate": _soap_date(end),
-        "reportCurrency": REPORT_CURRENCY,
+        "reportCurrency": currency,
     }
 
 
 def parse_report(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
-    """Lê o CSV_DUMP linha a linha; sem o cabeçalho com a data é falha temporária, nunca período
-    vazio, e no key-value a linha sem ``chave=valor`` fica de fora."""
+    """Lê o CSV_DUMP linha a linha (sem o cabeçalho é falha temporária); no key-value sai a linha
+    sem ``chave=valor`` e no por hora a que não é ``content_hash``."""
     reader = csv.DictReader(line.decode("utf-8-sig") for line in content)
     if f"{DIMENSION_PREFIX}DATE" not in (reader.fieldnames or ()):
         raise GamUnavailable("o relatório do GAM veio sem o cabeçalho do CSV")
     for record in reader:
         custom_key: str | None = None
         custom_value: str | None = None
-        if kind is ReportKind.KEY_VALUE:
+        if kind is not ReportKind.AD_UNIT:
             criteria = record.get(f"{DIMENSION_PREFIX}CUSTOM_CRITERIA") or ""
             if "=" not in criteria:
                 continue
             custom_key, custom_value = criteria.split("=", 1)
+            if kind is ReportKind.PRICE_RULE_HOURS and custom_key != SEGMENT_KEY:
+                continue
         yield GamReportRow(
             date=date.fromisoformat(record[f"{DIMENSION_PREFIX}DATE"]),
             ad_unit_path=_ad_unit_path(record),
@@ -182,7 +201,16 @@ def parse_report(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamRepo
             gam_ad_unit_id=record.get(f"{DIMENSION_PREFIX}AD_UNIT_ID") or None,
             custom_key=custom_key,
             custom_value=custom_value,
+            hour=_hour(record.get(f"{DIMENSION_PREFIX}HOUR")),
         )
+
+
+def _hour(value: str | None) -> int | None:
+    """A hora do relatório por hora (0 a 23); vazio nos outros relatórios."""
+    if not value:
+        return None
+    hour = _integer(value)
+    return hour if 0 <= hour <= 23 else None
 
 
 def _ad_unit_path(record: dict[str, str]) -> str:
