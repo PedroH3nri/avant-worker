@@ -47,6 +47,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.schedules.schedule_tasks",
             "avant_worker.tasks.checklists.checklist_tasks",
             "avant_worker.tasks.rewards.reward_tasks",
+            "avant_worker.tasks.ad_tags.ad_tag_tasks",
         ],
     )
     app.conf.update(
@@ -163,6 +164,14 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "reward-events": {
                 "task": "avant.default.flush_reward_events",
                 "schedule": 60.0,
+            },
+            "page-views-flush": {
+                "task": "avant.default.flush_page_views",
+                "schedule": 60.0,
+            },
+            "page-view-partitions": {
+                "task": "avant.default.ensure_page_view_partitions",
+                "schedule": crontab(hour=2, minute=30),
             },
             "reward-batches-purge": {
                 "task": "avant.default.purge_reward_batches",

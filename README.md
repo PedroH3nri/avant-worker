@@ -47,7 +47,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.purge_expired` | todo dia às 04:00 UTC | apaga sessões encerradas há mais de 30 dias e links de nova senha vencidos há mais de 7 |
 | `avant.gam.discover_mcm` | de hora em hora (minuto 5) | lê os child publishers da network da Groone: liga networks novas à Empresa do dono, guarda o MCM sem dono e desconecta o que foi encerrado |
 | `avant.gam.sync_contracts` | de hora em hora (minuto 10) | lê o revshare aprovado de cada child publisher MCM Manage Account e, quando muda, encerra o contrato ativo da network e cria outro |
-| `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem; depois dos ad units, apaga do Redis o cache das páginas de reward em "mais recentes" dos sites da network |
+| `avant.gam.sync_network(company_id, network_id, test=True)` | ao conectar, no "sincronizar agora" e depois da descoberta | teste de acesso, sites e ad units, nessa ordem; depois dos ad units, apaga do Redis o cache das páginas de reward em "mais recentes" dos sites da network e o das ad tags (`avant:tag:{chave}`) |
 | `avant.gam.run_tool(run_id)` | quando a API abre uma execução das ferramentas do GAM | roda a configuração completa, o setup de anúncio, os key values ou o "Sincronizar agora" passo a passo (`execute_gam_tool` do core, escritas por SOAP em `adapters/gam_writer.py`, o único arquivo que escreve no GAM); avisa o painel interno com `gam_tool_run.updated`; sem retry automático |
 | `avant.gam.schedule_tests` | todo dia às 03:00 UTC | uma `avant.gam.check_access` por network ativa |
 | `avant.gam.schedule_imports` | de 6 em 6 horas (minuto 20) | uma `avant.gam.sync_network(test=False)` por network ativa |
@@ -58,6 +58,8 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.sync_page_views(company_id, network_id, start, end)` | pelo agendador abaixo | visitas da network no contador do iGroone/data (Mongo, só leitura), gravadas com upsert em `metrics.page_views_hourly`; avisa o painel com `metrics.updated` |
 | `avant.default.schedule_page_views` | de hora em hora (minuto 20) | ontem e hoje (datas de São Paulo, como no data) de cada network ativa; sem `PAGE_VIEWS_MONGO_URL`, não agenda nada |
 | `avant.default.sync_exchange_rates` | a cada 6 horas (minuto 50) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
+| `avant.default.flush_page_views` | a cada minuto | grava as páginas vistas que a api guardou em `avant:page-views:buffer` (país pelo IP com a GeoLite2; o IP não é gravado) nas visitas por hora, nas key-values e na saúde da tag |
+| `avant.default.ensure_page_view_partitions` | todo dia às 02:30 | cria as partições diárias de `metrics.page_view_events` de hoje e dos 7 dias seguintes |
 | `avant.gam.sync_mcm_earnings` | dias 15 a 20, 03:10 UTC | ganhos e deduções do MCM do mês anterior (`mcmEarnings:fetch` na network da Groone, só leitura), como o `PaymentsGamSync` do Genius; 12 meses para trás na primeira vez. Aceita `month="AAAA-MM"` para regravar um mês |
 | `avant.default.calculate_today_commissions` | a cada hora, :45 | comissão de hoje em rascunho, depois de entregar aos responsáveis os prazos sem pessoa |
 | `avant.default.calculate_recent_commissions` | 03:00 UTC | todos os dias ainda em aberto até ontem (da data de início, ou do mês seguinte ao último fechado) |
@@ -109,6 +111,7 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | `GAM_GROONE_NETWORK_CODE` | network da Groone (MCM) |
 | `GAM_SOAP_VERSION` | opcional: versão da API SOAP dos relatórios (ex.: `v202608`); vazio usa a mais nova do `googleads` |
 | `PAGE_VIEWS_MONGO_URL` | Mongo do iGroone/data, com um usuário só de leitura; sem ela, as visitas não sincronizam |
+| `GEOLITE2_COUNTRY_FILE` | caminho da base GeoLite2 Country (`.mmdb`, da MaxMind) montada no container; sem ela, o país das visitas da tag fica `unknown` |
 | `PAGE_VIEWS_MONGO_DATABASE` | banco do data no Mongo (padrão `admanager`) |
 | `OPENEXCHANGERATES_APP_ID` | chave do Open Exchange Rates (o plano grátis basta); sem ela, as cotações não sincronizam e o painel só mostra dólar |
 | `LOG_LEVEL` | padrão `INFO` |
