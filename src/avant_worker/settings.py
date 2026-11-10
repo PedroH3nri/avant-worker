@@ -37,6 +37,10 @@ class Settings(BrokerSettings):
     page_views_mongo_url: str | None = None
     page_views_mongo_database: str = "admanager"
 
+    # País das visitas da tag pelo IP: a base GeoLite2 Country (.mmdb). Sem ela, o país fica
+    # "unknown" e as visitas são gravadas do mesmo jeito.
+    geolite2_country_file: str | None = None
+
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
 
