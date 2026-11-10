@@ -60,6 +60,10 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.default.sync_exchange_rates` | a cada 6 horas (minuto 50) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
 | `avant.default.flush_page_views` | a cada minuto | grava as páginas vistas que a api guardou em `avant:page-views:buffer` (país pelo IP com a GeoLite2; o IP não é gravado) nas visitas por hora, nas key-values e na saúde da tag |
 | `avant.default.ensure_page_view_partitions` | todo dia às 02:30 | cria as partições diárias de `metrics.page_view_events` de hoje e dos 7 dias seguintes |
+| `avant.gam.schedule_price_rule_hours` | minuto 55 de cada hora | para cada network com site de regra de preço ligada, `avant.gam.sync_price_rule_hours` baixa o relatório por hora da key `content_hash` (ontem e hoje) na moeda da network, sem conversão, e troca as linhas de `metrics.gam_key_value_hourly` |
+| `avant.default.run_price_rules` | minuto 58 de cada hora | roda o motor das regras de preço (modelo Automática) e apaga `avant:price-floors:{site}:{hash}` dos hashes que mudaram |
+| `avant.default.create_price_rules` | todo dia às 04:00 (São Paulo) | cria as regras novas dos blocos marcados (300+ requisições elegíveis ontem) |
+| `avant.default.maintain_price_rule_partitions` | todo dia às 02:35 | cria as partições de `metrics.gam_key_value_hourly` dos próximos dias e apaga as de mais de 30 dias |
 | `avant.gam.sync_mcm_earnings` | dias 15 a 20, 03:10 UTC | ganhos e deduções do MCM do mês anterior (`mcmEarnings:fetch` na network da Groone, só leitura), como o `PaymentsGamSync` do Genius; 12 meses para trás na primeira vez. Aceita `month="AAAA-MM"` para regravar um mês |
 | `avant.default.calculate_today_commissions` | a cada hora, :45 | comissão de hoje em rascunho, depois de entregar aos responsáveis os prazos sem pessoa |
 | `avant.default.calculate_recent_commissions` | 03:00 UTC | todos os dias ainda em aberto até ontem (da data de início, ou do mês seguinte ao último fechado) |

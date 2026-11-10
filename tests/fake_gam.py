@@ -60,13 +60,21 @@ class FakeReports:
     rows: dict[tuple[str, ReportKind], list[GamReportRow]] = field(default_factory=dict)
     fail_next: list[GamError] = field(default_factory=list)
     calls: list[tuple[str, ReportKind, date, date]] = field(default_factory=list)
+    currencies: list[str] = field(default_factory=list)
 
     @contextmanager
     def report(
-        self, network_code: str, kind: ReportKind, start: date, end: date
+        self,
+        network_code: str,
+        kind: ReportKind,
+        start: date,
+        end: date,
+        *,
+        currency: str = "USD",
     ) -> Iterator[Iterator[GamReportRow]]:
         """As linhas prontas do período, ou o próximo erro de ``fail_next``."""
         self.calls.append((network_code, kind, start, end))
+        self.currencies.append(currency)
         if self.fail_next:
             raise self.fail_next.pop(0)
         yield iter(

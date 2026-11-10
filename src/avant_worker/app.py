@@ -48,6 +48,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.checklists.checklist_tasks",
             "avant_worker.tasks.rewards.reward_tasks",
             "avant_worker.tasks.ad_tags.ad_tag_tasks",
+            "avant_worker.tasks.price_rules.price_rule_tasks",
         ],
     )
     app.conf.update(
@@ -172,6 +173,22 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "page-view-partitions": {
                 "task": "avant.default.ensure_page_view_partitions",
                 "schedule": crontab(hour=2, minute=30),
+            },
+            "price-rule-hours": {
+                "task": "avant.gam.schedule_price_rule_hours",
+                "schedule": crontab(minute=55),
+            },
+            "price-rules-run": {
+                "task": "avant.default.run_price_rules",
+                "schedule": crontab(minute=58),
+            },
+            "price-rules-create": {
+                "task": "avant.default.create_price_rules",
+                "schedule": crontab(hour=7, minute=0),
+            },
+            "price-rule-partitions": {
+                "task": "avant.default.maintain_price_rule_partitions",
+                "schedule": crontab(hour=2, minute=35),
             },
             "reward-batches-purge": {
                 "task": "avant.default.purge_reward_batches",
