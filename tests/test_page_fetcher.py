@@ -31,6 +31,9 @@ SHORT_DEADLINE = 0.6
         "::ffff:a9fe:a9fe",
         "2002:a00:5::1",
         "2002:a9fe:a9fe::1",
+        "::ffff:0:a00:5",
+        "::ffff:0:7f00:1",
+        "::ffff:0:a9fe:a9fe",
         TEREDO_PRIVATE_CLIENT,
     ],
 )
@@ -45,6 +48,7 @@ def test_ipv6_addresses_with_an_internal_ipv4_inside_are_refused(address: str) -
         "::5db8:d822",
         "::ffff:5db8:d822",
         "2002:5db8:d822::1",
+        "::ffff:0:5db8:d822",
         TEREDO_PUBLIC_CLIENT,
     ],
 )
@@ -132,6 +136,38 @@ def test_slow_dns_counts_against_the_total_deadline(monkeypatch: pytest.MonkeyPa
     started = time.monotonic()
     assert HttpPageFetcher(interval=0).fetch("http://example.com/") is None
     assert time.monotonic() - started < SHORT_DEADLINE * 2
+
+
+class StuckLookup:
+    """Consulta de DNS que nunca termina e registra se foi cancelada."""
+
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    def result(self, timeout: float | None = None) -> list[Any]:
+        """Esgota o tempo como um DNS travado."""
+        raise TimeoutError()
+
+    def cancel(self) -> bool:
+        """Marca a consulta como cancelada."""
+        self.cancelled = True
+        return True
+
+
+def test_dns_timeout_cancels_the_pending_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    lookup = StuckLookup()
+
+    class StuckResolver:
+        """Pool de DNS que devolve sempre a consulta travada."""
+
+        def submit(self, *_: Any, **__: Any) -> StuckLookup:
+            """Entrega a consulta travada."""
+            return lookup
+
+    monkeypatch.setattr(page_fetcher, "_resolver", StuckResolver())
+    with pytest.raises(httpcore.ConnectTimeout):
+        PublicOnlyBackend().connect_tcp("example.com", 443, timeout=1)
+    assert lookup.cancelled
 
 
 DrippingServer = Callable[[bytes, bytes], int]
