@@ -1,11 +1,15 @@
 import uuid
 from datetime import timedelta
 
+import pytest
 from avant_core.identity.models import Session, User
+from avant_core.mail import ResendMailer
+from pydantic import ValidationError
 from sqlalchemy import text
 
-from avant_worker.app import QUEUES, _route, app
-from avant_worker.services import Services
+from avant_worker.app import QUEUES, _route, app, check_settings
+from avant_worker.services import Services, _mailer
+from avant_worker.settings import Settings
 from avant_worker.tasks.maintenance import purge_expired
 
 
@@ -56,17 +60,39 @@ def test_purge_expired(services: Services) -> None:
     assert left == 1
 
 
-def test_deployed_envs_need_redis_and_resend() -> None:
-    import pytest
-    from pydantic import ValidationError
-
-    from avant_worker.settings import Settings
-
-    with pytest.raises(ValidationError, match="REDIS_URL, RESEND_API_KEY"):
-        Settings(database_url="postgresql://x", avant_env="staging")
+@pytest.mark.parametrize("env", ["local", "test", "staging", "production"])
+def test_every_env_needs_redis_and_resend(env: str) -> None:
+    with pytest.raises(ValidationError) as error:
+        Settings(database_url="postgresql://x", avant_env=env, _env_file=None)
+    missing = {str(item["loc"][0]) for item in error.value.errors()}
+    assert missing == {"redis_url", "resend_api_key"}
     Settings(
         database_url="postgresql://x",
-        avant_env="production",
+        avant_env=env,
         redis_url="redis://r",
         resend_api_key="re_x",
     )
+
+
+def test_the_worker_does_not_start_without_redis_or_resend(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://avant_app:segredo-do-banco@db/avant")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    with pytest.raises(SystemExit) as stopped:
+        check_settings()
+    logged = [str(record.__dict__) for record in caplog.records]
+    assert "REDIS_URL, RESEND_API_KEY" in str(stopped.value)
+    assert any("REDIS_URL, RESEND_API_KEY" in record for record in logged)
+    assert "segredo-do-banco" not in str(stopped.value) + "".join(logged)
+
+
+def test_the_worker_mailer_is_always_resend() -> None:
+    settings = Settings(
+        database_url="postgresql://x",
+        avant_env="local",
+        redis_url="redis://r",
+        resend_api_key="re_x",
+    )
+    assert isinstance(_mailer(settings), ResendMailer)

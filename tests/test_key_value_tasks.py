@@ -82,14 +82,11 @@ class FakeTrafficWriter:
 @pytest.fixture
 def redis_services(services: Services) -> Services:
     """Os serviços com Redis (as tarefas não fazem nada sem ele)."""
-    if services.redis is None:
-        pytest.skip("defina AVANT_TEST_REDIS_URL")
     return services
 
 
 def test_buffered_values_become_gam_values_once(redis_services: Services) -> None:
     services = redis_services
-    assert services.redis is not None
     fake = FakeTrafficWriter()
     services._gam_writer = fake  # type: ignore[assignment]
     services.redis.sadd("kv:buffer:2100", "utm_source:fb", "land_uri:/a", "utm_medium:cpc")
@@ -112,7 +109,6 @@ def test_buffered_values_become_gam_values_once(redis_services: Services) -> Non
 
 def test_connected_networks_reach_the_route(redis_services: Services) -> None:
     services = redis_services
-    assert services.redis is not None
     services.settings.gam_groone_network_code = "22893970961"
     owner = company(services)
     connected = network(services, owner, code="2100")
@@ -132,7 +128,6 @@ def test_a_gam_failure_puts_the_pairs_back_and_a_key_without_id_is_not_seen(
     redis_services: Services,
 ) -> None:
     services = redis_services
-    assert services.redis is not None
     fake = FakeTrafficWriter()
     services._gam_writer = fake  # type: ignore[assignment]
     services.redis.sadd("kv:buffer:2100", "utm_medium:cpc")
@@ -158,7 +153,6 @@ def test_a_network_without_gam_access_backs_off_and_keeps_its_pairs(
     redis_services: Services,
 ) -> None:
     services = redis_services
-    assert services.redis is not None
     fake = FakeTrafficWriter()
     services._gam_writer = fake  # type: ignore[assignment]
     calls: list[str] = []
@@ -190,7 +184,6 @@ def test_the_lock_is_renewed_for_each_network_and_a_lost_lock_stops_the_run(
     redis_services: Services, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     services = redis_services
-    assert services.redis is not None
     services._gam_writer = FakeTrafficWriter()  # type: ignore[assignment]
     renewals: list[str] = []
 

@@ -24,8 +24,6 @@ DAY = "2026-11-09"
 @pytest.fixture
 def redis_services(services: Services) -> Services:
     """Os serviços com Redis (as tarefas não fazem nada sem ele)."""
-    if services.redis is None:
-        pytest.skip("defina AVANT_TEST_REDIS_URL")
     return services
 
 
@@ -64,7 +62,6 @@ def _reward(services: Services, path: str = "receitas/bolo") -> tuple[Reward, Re
 
 def test_buffer_becomes_metrics_and_leads(redis_services: Services) -> None:
     services = redis_services
-    assert services.redis is not None
     reward, question = _reward(services)
     rid, qid = str(reward.id), str(question.id)
     items = [
@@ -109,7 +106,6 @@ def test_buffer_becomes_metrics_and_leads(redis_services: Services) -> None:
 
 def test_import_forgets_the_latest_reward_pages(redis_services: Services) -> None:
     services = redis_services
-    assert services.redis is not None
     reward, _question = _reward(services, path="")
     with services.uow(reward.company_id) as uow:
         site = uow.sites.get(reward.site_id)

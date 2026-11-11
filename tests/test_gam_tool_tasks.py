@@ -260,8 +260,6 @@ def test_writer_reads_seller_in_groone_network(seller: str | None) -> None:
 
 
 def test_a_busy_network_waits_and_tries_again(services: Services, monkeypatch: Any) -> None:
-    if services.redis is None:
-        pytest.skip("sem Redis")
     services.settings.gam_groone_network_code = "9999"
     actor = staff(services)
     client = company(services)

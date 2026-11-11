@@ -8,7 +8,7 @@ import os
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Protocol
@@ -18,7 +18,7 @@ from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
-from avant_core.mail import LogMailer, ResendMailer
+from avant_core.mail import ResendMailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from avant_core.ports import Mailer
@@ -97,8 +97,8 @@ class Services:
     settings: Settings
     engine: Engine
     clock: Clock
-    mailer: Mailer = field(default_factory=lambda: LogMailer(base_url="", show_links=False))
-    redis: "redis.Redis | None" = None
+    mailer: Mailer
+    redis: "redis.Redis"
     # Montado na primeira tarefa do GAM (ou entregue pronto nos testes).
     gam_override: Gam | None = None
     reports_override: "ReportSource | None" = None
@@ -133,7 +133,7 @@ class Services:
             engine=engine,
             clock=SystemClock(),
             mailer=_mailer(settings),
-            redis=redis.Redis.from_url(settings.redis_url) if settings.redis_url else None,
+            redis=redis.Redis.from_url(settings.redis_url),
         )
 
     def uow(self, company_id: uuid.UUID) -> SqlAlchemyUnitOfWork:
@@ -229,10 +229,7 @@ class Services:
 
     @contextmanager
     def lock(self, key: str, *, timeout: int) -> Iterator[bool]:
-        """Trava no Redis (``True`` se conseguiu). Sem Redis, não trava: só no local."""
-        if self.redis is None:
-            yield True
-            return
+        """Trava no Redis (``True`` se conseguiu)."""
         lock = self.redis.lock(f"avant:lock:{key}", timeout=timeout, blocking=False)
         if not lock.acquire():
             yield False
@@ -260,14 +257,12 @@ class Services:
 
 
 def _mailer(settings: Settings) -> Mailer:
-    """Usa o Resend quando há chave; senão só registra os emails no log."""
-    if settings.resend_api_key:
-        return ResendMailer(
-            api_key=settings.resend_api_key,
-            sender=settings.mail_from,
-            base_url=settings.app_base_url,
-        )
-    return LogMailer(base_url=settings.app_base_url, show_links=settings.avant_env == "local")
+    """O Resend, em todo ambiente: nenhum link com token vai para o log."""
+    return ResendMailer(
+        api_key=settings.resend_api_key,
+        sender=settings.mail_from,
+        base_url=settings.app_base_url,
+    )
 
 
 _current: tuple[int, Services] | None = None

@@ -13,9 +13,10 @@ from typing import Any
 
 from celery import Celery, signals
 from celery.schedules import crontab
+from pydantic import ValidationError
 
 from avant_worker.logs import configure_logging
-from avant_worker.settings import BrokerSettings
+from avant_worker.settings import BrokerSettings, Settings
 
 QUEUES = ("default", "mail", "gam")
 
@@ -201,6 +202,25 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
 
 
 app = create_app()
+
+
+@signals.worker_init.connect
+def _check_on_start(**_: Any) -> None:
+    """Na subida do worker: sem uma variável obrigatória, ele não sobe."""
+    check_settings()
+
+
+def check_settings() -> None:
+    """Confere a configuração do worker; levanta ``SystemExit`` com os nomes do que falta ou
+    está errado, sem os valores (o erro do pydantic traz as outras variáveis, com segredos)."""
+    try:
+        Settings()
+    except ValidationError as exc:
+        names = sorted({str(error["loc"][0]).upper() for error in exc.errors() if error["loc"]})
+        logging.getLogger("avant.worker").critical(
+            "configuração do worker incompleta", extra={"variables": ", ".join(names)}
+        )
+        raise SystemExit(f"configuração do worker incompleta: {', '.join(names)}") from None
 
 
 @signals.setup_logging.connect
