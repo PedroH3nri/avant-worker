@@ -26,12 +26,8 @@ def channel(company_id: uuid.UUID) -> str:
     return f"avant:events:{company_id}"
 
 
-def publish(
-    client: "redis.Redis | None", company_id: uuid.UUID, type_: str, data: dict[str, str]
-) -> None:
-    """Sem Redis (local), não há tela para avisar. Falha ao publicar não derruba a tarefa."""
-    if client is None:
-        return
+def publish(client: "redis.Redis", company_id: uuid.UUID, type_: str, data: dict[str, str]) -> None:
+    """Publica o evento para as telas abertas; falha ao publicar não derruba a tarefa."""
     try:
         client.publish(channel(company_id), json.dumps({"type": type_, "data": data}))
     except redis.RedisError:

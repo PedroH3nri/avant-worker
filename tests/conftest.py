@@ -2,8 +2,8 @@
 PostgreSQL real, com as migrations do avant-core.
 
 AVANT_TEST_MIGRATIONS_URL: papel avant_owner. AVANT_TEST_DATABASE_URL: papel avant_app.
-Sem as duas, os testes que precisam de banco são pulados. AVANT_TEST_REDIS_URL liga a trava
-por network (sem ele, o teste da trava é pulado). O GAM é sempre o de ``fake_gam.py``.
+AVANT_TEST_REDIS_URL: o Redis, obrigatório no worker. Sem as três, os testes que precisam de
+banco são pulados. O GAM é sempre o de ``fake_gam.py``.
 """
 
 import os
@@ -16,6 +16,7 @@ from alembic import command
 from alembic.config import Config
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
+from avant_core.mail import LogMailer
 from avant_core.metrics.models import DateRange
 from avant_core.shared.clock import SystemClock
 from sqlalchemy import Engine, create_engine, text
@@ -105,11 +106,19 @@ def engine() -> Iterator[Engine]:
 
 @pytest.fixture
 def services(engine: Engine) -> Iterator[Services]:
-    r = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
+    if not REDIS_URL:
+        pytest.skip("defina AVANT_TEST_REDIS_URL")
+    r = redis.Redis.from_url(REDIS_URL)
     s = Services(
-        settings=Settings(database_url=APP_URL or "", avant_env="test"),
+        settings=Settings(
+            database_url=APP_URL or "",
+            avant_env="test",
+            redis_url=REDIS_URL,
+            resend_api_key="re_teste",
+        ),
         engine=engine,
         clock=SystemClock(),
+        mailer=LogMailer(base_url="", show_links=False),
         redis=r,
         gam_override=Gam(FakeGamClient(), GROONE_NETWORK),
         reports_override=FakeReports(),
@@ -127,11 +136,10 @@ def services(engine: Engine) -> Iterator[Services]:
         for table in TABLES:
             conn.execute(text(f"DELETE FROM {table}"))
     owner.dispose()
-    if r is not None:
-        for pattern in ("avant:lock:*", "kv:*", "avant:price-floors:*", "avant:gam:currency:*"):
-            for key in r.scan_iter(pattern):
-                r.delete(key)
-        r.close()
+    for pattern in ("avant:lock:*", "kv:*", "avant:price-floors:*", "avant:gam:currency:*"):
+        for key in r.scan_iter(pattern):
+            r.delete(key)
+    r.close()
 
 
 def refresh_levels(uow: SqlAlchemyUnitOfWork) -> None:

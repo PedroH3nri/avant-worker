@@ -34,8 +34,6 @@ class FakeCountries:
 @pytest.fixture
 def redis_services(services: Services) -> Services:
     """Os serviços com Redis e o país pelo IP falso."""
-    if services.redis is None:
-        pytest.skip("defina AVANT_TEST_REDIS_URL")
     services._countries = FakeCountries()
     return services
 
@@ -83,7 +81,6 @@ def _page(tag: AdTag, site: Site, services: Services, **changes: object) -> dict
 
 def test_buffer_becomes_page_views_and_health(redis_services: Services) -> None:
     services = redis_services
-    assert services.redis is not None
     ensure_page_view_partitions_task()
     tag, site = _tag(services)
     first = _page(tag, site, services)
@@ -123,7 +120,6 @@ def test_partitions_are_created_once(redis_services: Services) -> None:
 
 def test_import_forgets_the_network_tags(redis_services: Services) -> None:
     services = redis_services
-    assert services.redis is not None
     tag, site = _tag(services)
     assert site.network_id is not None
     key = f"avant:tag:{tag.key}"

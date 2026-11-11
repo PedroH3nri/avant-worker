@@ -161,8 +161,6 @@ def test_closing_runs_every_day_from_the_15th_to_the_20th() -> None:
 
 
 def test_a_busy_lock_skips_the_run(services: Services) -> None:
-    if services.redis is None:
-        pytest.skip("sem Redis")
     held = services.redis.lock("avant:lock:commissions", timeout=60, blocking=False)
     assert held.acquire()
     try:
@@ -173,8 +171,6 @@ def test_a_busy_lock_skips_the_run(services: Services) -> None:
 
 
 def test_a_long_run_renews_the_lock(services: Services) -> None:
-    if services.redis is None:
-        pytest.skip("sem Redis")
     with services.lock("teste-renova", timeout=5) as acquired:
         assert acquired
         services.renew_lock("teste-renova", timeout=300)
@@ -228,8 +224,6 @@ def test_last_month_closes_after_its_earnings_arrive(services: Services) -> None
 
 
 def test_renewing_a_lost_lock_says_so(services: Services) -> None:
-    if services.redis is None:
-        pytest.skip("sem Redis")
     with services.lock("teste-perdida", timeout=60) as acquired:
         assert acquired
         services.redis.delete("avant:lock:teste-perdida")

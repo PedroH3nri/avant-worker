@@ -200,16 +200,13 @@ def _fan_out(start: date, end: date) -> int:
 
 def _mark_queued(services: Services, network_id: str, start: str, end: str) -> bool:
     """Marca o período da network como na fila; ``False`` se já estava marcado."""
-    if services.redis is None:
-        return True
     marker = QUEUED.format(network_id=network_id, start=start, end=end)
     return bool(services.redis.set(marker, 1, nx=True, ex=QUEUED_FOR))
 
 
 def _clear_queued(services: Services, network_id: str, start: str, end: str) -> None:
     """Tira a marca de fila do período: a cópia que esperava já rodou ou desistiu."""
-    if services.redis is not None:
-        services.redis.delete(QUEUED.format(network_id=network_id, start=start, end=end))
+    services.redis.delete(QUEUED.format(network_id=network_id, start=start, end=end))
 
 
 def _network(services: Services, company_id: uuid.UUID, network_id: uuid.UUID) -> Network | None:

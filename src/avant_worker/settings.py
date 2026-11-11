@@ -2,7 +2,6 @@
 
 from typing import Literal
 
-from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,18 +12,22 @@ class BrokerSettings(BaseSettings):
 
     avant_env: Literal["local", "test", "staging", "production"] = "local"
     celery_broker_url: str = "amqp://guest:guest@localhost:5672//"
-    # Resultados das tarefas e trava por network. Sem Redis, só no local e nos testes.
+    # Resultados das tarefas. O agendador só publica; o worker exige o Redis (``Settings``).
     redis_url: str | None = None
 
 
 class Settings(BrokerSettings):
+    """O que o worker precisa. Redis e Resend são obrigatórios em todo ambiente: sem eles, o
+    worker não sobe (no desenvolvimento, uma chave do Resend com remetente de sandbox)."""
+
     # Papel avant_app: sem BYPASSRLS e sem ser dono das tabelas.
     database_url: str
     db_pool_size: int = 5
+    redis_url: str
 
-    # E-mails (avisos de network com erro ou desconectada). Sem chave, só no log.
+    # E-mails: sempre pelo Resend; nenhum link com token vai para o log.
     app_base_url: str = "http://localhost:8080"
-    resend_api_key: str | None = None
+    resend_api_key: str
     mail_from: str = "Avant <nao-responda@avant.groone.com>"
 
     # Google Ad Manager: só os workers da fila gam têm a chave da conta de serviço.
@@ -43,19 +46,3 @@ class Settings(BrokerSettings):
 
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
-
-    @model_validator(mode="after")
-    def _deployed_envs(self) -> "Settings":
-        """Exige as variáveis obrigatórias em staging e produção."""
-        if self.avant_env in ("staging", "production"):
-            missing = [
-                name
-                for name, value in (
-                    ("REDIS_URL", self.redis_url),
-                    ("RESEND_API_KEY", self.resend_api_key),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError(f"faltam variáveis em {self.avant_env}: {', '.join(missing)}")
-        return self

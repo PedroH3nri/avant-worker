@@ -311,7 +311,6 @@ def test_locked_chunk_goes_back_to_the_queue(
         "_try_later",
         lambda *args: later.append(tuple(str(arg) for arg in args)),
     )
-    assert services.redis is not None
     held = services.redis.lock(f"avant:lock:gam:metrics:{connected.id}", timeout=60, blocking=False)
     assert held.acquire()
     try:
@@ -370,7 +369,6 @@ def test_a_lost_lock_between_reports_sends_the_chunk_back_to_the_queue(
 def test_a_period_already_waiting_in_the_queue_is_not_queued_again(services: Services) -> None:
     owner = company(services)
     connected = network(services, owner)
-    assert services.redis is not None
     today = services.clock.now().date()
     start, end = (today - timedelta(days=1)).isoformat(), today.isoformat()
     marker = f"gam:metrics:queued:{connected.id}:{start}:{end}"

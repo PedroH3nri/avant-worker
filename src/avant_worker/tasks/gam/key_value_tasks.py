@@ -49,8 +49,6 @@ def process_key_values() -> int:
     """A cada 30 s: esvazia o buffer de cada network e cria no GAM os valores novos; uma network
     que falha não para as outras, os pares dela voltam ao buffer e o erro permanente dá recuo."""
     services = get_services()
-    if services.redis is None:
-        return 0
     stored = 0
     with services.lock(LOCK_KEY, timeout=LOCK_FOR) as acquired:
         if not acquired:
@@ -81,7 +79,7 @@ def refresh_key_value_networks() -> int:
     """A cada 5 minutos: as networks conectadas (mais a da Groone) no Redis, para a rota."""
     services = get_services()
     groone = services.settings.gam_groone_network_code
-    if services.redis is None or not groone:
+    if not groone:
         return 0
     codes = connected_network_codes(services.trusted_uow(), groone_network_code=groone)
     staging = f"{CONNECTED}:novo"
@@ -96,7 +94,6 @@ def refresh_key_value_networks() -> int:
 def _process_network(services: Services, network: str) -> int:
     """Tira os pares do buffer (renomeando para uma chave só desta execução), descarta os vistos
     nas últimas 24 horas e manda o resto ao core; se o GAM falhar, devolve os pares ao buffer."""
-    assert services.redis is not None
     client = services.redis
     buffer = BUFFER.format(network=network)
     processing = PROCESSING.format(network=network, run=uuid.uuid4().hex)
@@ -138,7 +135,6 @@ def _process_network(services: Services, network: str) -> int:
 
 def _key_ids(services: Services, network: str) -> dict[str, str]:
     """Os ids das oito keys na network, lidos do GAM pelo nome e guardados por 1 hora."""
-    assert services.redis is not None
     cached = cast(dict[bytes, bytes], services.redis.hgetall(KEY_IDS.format(network=network)))
     if cached:
         return {name.decode(): key_id.decode() for name, key_id in cached.items()}

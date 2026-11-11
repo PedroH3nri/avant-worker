@@ -301,8 +301,6 @@ def test_sync_contracts_replaces_the_contract_when_the_revshare_changes(
 
 
 def test_lock_skips_a_second_run(services: Services) -> None:
-    if services.redis is None:
-        pytest.skip("defina AVANT_TEST_REDIS_URL")
     c = company(services)
     n = network(services, c)
     inventory(fake(services))
@@ -313,8 +311,6 @@ def test_lock_skips_a_second_run(services: Services) -> None:
 
 
 def test_sync_publishes_network_events(services: Services) -> None:
-    if services.redis is None:
-        pytest.skip("defina AVANT_TEST_REDIS_URL")
     import json
 
     from avant_worker.adapters import channel
@@ -334,9 +330,3 @@ def test_sync_publishes_network_events(services: Services) -> None:
     network_events = [event for event in events if event["type"] == "network.updated"]
     assert network_events == [{"type": "network.updated", "data": {"network_id": str(n.id)}}] * 3
     assert {event["type"] for event in events} == {"network.updated", "metrics.updated"}
-
-
-def test_publish_without_redis_is_a_no_op() -> None:
-    from avant_worker.adapters import publish
-
-    publish(None, uuid.uuid4(), "network.updated", {"network_id": "x"})
