@@ -34,6 +34,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
         "avant",
         include=[
             "avant_worker.tasks.maintenance.purge_tasks",
+            "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
             "avant_worker.tasks.gam.tool_tasks",
