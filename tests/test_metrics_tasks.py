@@ -324,11 +324,64 @@ def test_locked_chunk_goes_back_to_the_queue(
             "2026-11-07",
             gam_metrics_tasks.MAX_LOCK_ATTEMPTS,
         )
-        assert last.get() == {"skipped": "locked"}
+        with pytest.raises(gam_metrics_tasks.NetworkBusy):
+            last.get()
     finally:
         held.release()
     assert later == [(str(owner.id), str(connected.id), "2026-11-01", "2026-11-07", "1")]
     assert reports(services).calls == []
+
+
+def test_the_lock_is_renewed_between_the_two_reports(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = company(services)
+    connected = network(services, owner)
+    renewals: list[tuple[str, int]] = []
+
+    def renew(key: str, *, timeout: int) -> bool:
+        """Registra a renovação e mantém a trava."""
+        renewals.append((key, timeout))
+        return True
+
+    monkeypatch.setattr(services, "renew_lock", renew)
+    sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-01").get()
+    assert renewals == [(f"gam:metrics:{connected.id}", gam_metrics_tasks.LOCK_SECONDS)]
+
+
+def test_a_lost_lock_between_reports_sends_the_chunk_back_to_the_queue(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = company(services)
+    connected = network(services, owner)
+    later: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        gam_metrics_tasks,
+        "_try_later",
+        lambda *args: later.append(tuple(str(arg) for arg in args)),
+    )
+    monkeypatch.setattr(services, "renew_lock", lambda key, *, timeout: False)
+    result = sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-01")
+    assert result.get() == {"skipped": "locked", "attempt": 1}
+    assert [call[1] for call in reports(services).calls] == [ReportKind.AD_UNIT]
+    assert later == [(str(owner.id), str(connected.id), "2026-11-01", "2026-11-01", "1")]
+
+
+def test_a_period_already_waiting_in_the_queue_is_not_queued_again(services: Services) -> None:
+    owner = company(services)
+    connected = network(services, owner)
+    assert services.redis is not None
+    today = services.clock.now().date()
+    start, end = (today - timedelta(days=1)).isoformat(), today.isoformat()
+    marker = f"gam:metrics:queued:{connected.id}:{start}:{end}"
+    services.redis.set(marker, 1)
+    assert schedule_metrics.delay().get() == 0
+    assert reports(services).calls == []
+
+    services.redis.delete(marker)
+    assert schedule_metrics.delay().get() == 1
+    assert len(reports(services).calls) == 2
+    assert not services.redis.exists(marker)
 
 
 def test_a_failing_chunk_does_not_stop_the_rest_of_the_history(
