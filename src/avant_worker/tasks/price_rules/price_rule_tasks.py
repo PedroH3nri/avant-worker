@@ -1,11 +1,14 @@
 """Tarefas das regras de preço (decisão 14 do avant-core).
 
 - ``schedule_price_rule_hours`` (minuto 55): para cada network com site de regra ligada,
-  ``sync_price_rule_hours`` baixa o relatório por hora da key ``content_hash`` de ontem e de
-  hoje, na moeda da network (sem conversão), e troca as linhas na ``gam_key_value_hourly``.
+  ``sync_price_rule_hours`` baixa o relatório por hora das keys ``content_hash`` e
+  ``groone_try`` de ontem e de hoje, na moeda da network (sem conversão), e troca as linhas na
+  ``gam_key_value_hourly`` numa chamada só. Também grava o fuso da network (``timeZone`` do
+  ``getCurrentNetwork``), que o motor usa para o floor por hora da Cascata.
 - ``run_price_rules`` (minuto 58): roda o motor em cada site com a regra ligada e apaga o cache
-  dos floors dos hashes que mudaram (``avant:price-floors:{site}:{hash}``, que a api lê).
-- ``create_price_rules`` (04:00): cria as regras novas dos blocos marcados.
+  dos floors dos hashes que mudaram (``avant:price-floors:{site}:{hash}``, que a api lê). Depois
+  roda a Cascata do site e, se algum floor inicial mudou, apaga ``avant:price-cascades:{site}``.
+- ``create_price_rules`` (04:00): cria as regras novas dos blocos marcados e as Cascatas.
 - ``maintain_price_rule_partitions`` (diária): partições da tabela por hora, 30 dias.
 
 Networks do MCM Manage Inventory ficam de fora: o inventário delas está na network da Groone.
@@ -20,17 +23,22 @@ from zoneinfo import ZoneInfo
 from avant_core.gam.client.errors import GamError, GamUnavailable
 from avant_core.gam.networks.enums import ConnectionType, Delegation
 from avant_core.gam.networks.models import Network
+from avant_core.gam.networks.services import record_network_time_zone
 from avant_core.metrics.services import maintain_key_value_hourly_partitions
-from avant_core.price_rules.catalog import FLOOR_CACHE_KEY
+from avant_core.price_rules.catalog import CASCADE_CACHE_KEY, FLOOR_CACHE_KEY
 from avant_core.price_rules.services import (
     active_price_rule_sites,
+    create_site_cascades,
     create_site_price_rules,
     price_rule_networks,
+    run_site_cascades,
     run_site_price_rules,
     store_price_rule_hours,
 )
+from avant_core.shared.errors import InvalidInput
 
 from avant_worker.adapters.gam_reports import ReportKind
+from avant_worker.adapters.gam_writer import GamTargetNetworkWithTimeZone
 from avant_worker.app import app
 from avant_worker.services import Services, get_services
 
@@ -38,6 +46,7 @@ log = logging.getLogger("avant.worker.price_rules")
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 CURRENCY_CACHE = "avant:gam:currency:{network}"
+TIME_ZONE_CACHE = "avant:gam:time-zone:{network}"
 CURRENCY_CACHE_SECONDS = 24 * 60 * 60
 LOCK_SECONDS = 15 * 60
 SOFT_LIMIT_SECONDS = 12 * 60
@@ -80,7 +89,8 @@ def sync_price_rule_hours(company_id: str, network_id: str) -> int:
         today = services.clock.now().astimezone(SAO_PAULO).date()
         days = [today - timedelta(days=1), today]
         try:
-            currency = _currency(services, network.network_code)
+            currency, time_zone = _currency_and_time_zone(services, network.network_code)
+            _record_time_zone(services, network, time_zone)
             with services.reports.report(
                 network.network_code,
                 ReportKind.PRICE_RULE_HOURS,
@@ -129,10 +139,15 @@ def run_price_rules() -> int:
                 hashes = run_site_price_rules(
                     services.trusted_uow(), site_id=site_id, clock=services.clock
                 )
+                start_changed = run_site_cascades(
+                    services.trusted_uow(), site_id=site_id, clock=services.clock
+                )
             except Exception:
                 log.exception("motor das regras de preço falhou", extra={"site_id": str(site_id)})
                 continue
             _forget_floors(services, site_id, hashes)
+            if start_changed:
+                _forget_cascades(services, site_id)
             changed += len(hashes)
     return changed
 
@@ -149,6 +164,9 @@ def create_price_rules() -> int:
     for site_id in active_price_rule_sites(services.trusted_uow()):
         try:
             created += create_site_price_rules(
+                services.trusted_uow(), site_id=site_id, clock=services.clock
+            )
+            created += create_site_cascades(
                 services.trusted_uow(), site_id=site_id, clock=services.clock
             )
         except Exception:
@@ -180,17 +198,36 @@ def _reads_groone_network(network: Network) -> bool:
     )
 
 
-def _currency(services: Services, network_code: str) -> str:
-    """A moeda da network no GAM, guardada por um dia no Redis (só leitura no GAM)."""
-    key = CURRENCY_CACHE.format(network=network_code)
+def _currency_and_time_zone(services: Services, network_code: str) -> tuple[str, str]:
+    """A moeda e o fuso da network no GAM, guardados por um dia no Redis; uma só chamada ao
+    ``getCurrentNetwork`` quando falta um dos dois (só leitura no GAM)."""
+    currency_key = CURRENCY_CACHE.format(network=network_code)
+    time_zone_key = TIME_ZONE_CACHE.format(network=network_code)
     if services.redis is not None:
-        cached = services.redis.get(key)
-        if isinstance(cached, bytes):
-            return cached.decode()
-    currency = services.gam_writer.target_network(network_code).currency_code
-    if services.redis is not None and currency:
-        services.redis.set(key, currency, ex=CURRENCY_CACHE_SECONDS)
-    return currency
+        cached_currency = services.redis.get(currency_key)
+        cached_time_zone = services.redis.get(time_zone_key)
+        if isinstance(cached_currency, bytes) and isinstance(cached_time_zone, bytes):
+            return cached_currency.decode(), cached_time_zone.decode()
+    target = services.gam_writer.target_network(network_code)
+    time_zone = target.time_zone if isinstance(target, GamTargetNetworkWithTimeZone) else ""
+    if services.redis is not None and target.currency_code:
+        services.redis.set(currency_key, target.currency_code, ex=CURRENCY_CACHE_SECONDS)
+        if time_zone:
+            services.redis.set(time_zone_key, time_zone, ex=CURRENCY_CACHE_SECONDS)
+    return target.currency_code, time_zone
+
+
+def _record_time_zone(services: Services, network: Network, time_zone: str) -> None:
+    """Grava o fuso da network; um nome inválido é registrado e a sincronia segue."""
+    if not time_zone:
+        return
+    try:
+        record_network_time_zone(services.trusted_uow(), network_id=network.id, time_zone=time_zone)
+    except InvalidInput:
+        log.warning(
+            "fuso da network inválido",
+            extra={"network_id": str(network.id), "time_zone": time_zone},
+        )
 
 
 def _forget_floors(services: Services, site_id: uuid.UUID, hashes: list[str]) -> None:
@@ -200,3 +237,10 @@ def _forget_floors(services: Services, site_id: uuid.UUID, hashes: list[str]) ->
     services.redis.delete(
         *(FLOOR_CACHE_KEY.format(site_id=site_id, content_hash=value) for value in hashes)
     )
+
+
+def _forget_cascades(services: Services, site_id: uuid.UUID) -> None:
+    """Apaga o cache das Cascatas do site, que a api lê; sem Redis, nada a fazer."""
+    if services.redis is None:
+        return
+    services.redis.delete(CASCADE_CACHE_KEY.format(site_id=site_id))
