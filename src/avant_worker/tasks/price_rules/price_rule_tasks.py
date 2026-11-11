@@ -230,7 +230,7 @@ def _record_time_zone(services: Services, network: Network, time_zone: str) -> N
         record_network_time_zone(services.trusted_uow(), network_id=network.id, time_zone=time_zone)
     except Exception:
         log.warning(
-            "fuso da network inválido",
+            "fuso da network não gravado",
             extra={"network_id": str(network.id), "time_zone": time_zone},
         )
 
