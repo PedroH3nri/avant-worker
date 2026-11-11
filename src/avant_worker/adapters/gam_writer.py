@@ -13,6 +13,7 @@ diferença é que aqui toda escrita confere antes o que já existe e só cria o 
 import logging
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -32,6 +33,21 @@ DUPLICATE = "VALUE_NAME_DUPLICATE"
 log = logging.getLogger("avant.worker.gam")
 
 
+def _optional_text(record: Any, field: str) -> str:
+    """O campo do registro SOAP como texto, ou vazio quando falta ou vem nulo."""
+    try:
+        return str(record[field] or "")
+    except (KeyError, AttributeError):
+        return ""
+
+
+@dataclass(frozen=True)
+class GamTargetNetworkWithTimeZone(GamTargetNetwork):
+    """A network alvo do core com o fuso (nome IANA) que o ``getCurrentNetwork`` também traz."""
+
+    time_zone: str = ""
+
+
 class SoapGamWriter:
     """Implementa o ``GamWriter`` do avant-core; um cliente do googleads por network."""
 
@@ -42,12 +58,13 @@ class SoapGamWriter:
         self._clients: dict[str, ad_manager.AdManagerClient] = {}
 
     def target_network(self, network_code: str) -> GamTargetNetwork:
-        """Lê a moeda e o bloco raiz da network (só leitura)."""
+        """Lê a moeda, o fuso e o bloco raiz da network numa chamada só (só leitura)."""
         network = self._call(network_code, "NetworkService", "getCurrentNetwork")
-        return GamTargetNetwork(
+        return GamTargetNetworkWithTimeZone(
             network_code=network_code,
             currency_code=str(network["currencyCode"]),
             root_ad_unit_id=str(network["effectiveRootAdUnitId"]),
+            time_zone=_optional_text(network, "timeZone"),
         )
 
     def seller_id(self, child_network_code: str, groone_network_code: str) -> str | None:

@@ -7,7 +7,8 @@ faz hoje com a mesma biblioteca (``googleads``). Este módulo só chama ``runRep
 
 Os relatórios são os dois do unified-sync: por ad unit e por key-value, com as mesmas
 oito colunas, em USD e com os ad units hierárquicos (``Ad unit 1``, ``Ad unit 2``...). O das
-regras de preço é o de key-value por hora, só com ``content_hash`` e na moeda da network.
+regras de preço é o de key-value por hora, só com ``content_hash`` e ``groone_try``, na moeda da
+network.
 """
 
 import csv
@@ -30,7 +31,7 @@ from avant_core.gam.client.errors import (
 )
 from avant_core.metrics.models import GamCounts, GamReportRow
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
-from avant_core.price_rules.catalog import SEGMENT_KEY
+from avant_core.price_rules.catalog import PRICE_RULE_KEYS
 from google.auth import exceptions as auth_exceptions
 from googleads import ad_manager, errors, oauth2
 
@@ -172,7 +173,7 @@ def report_query(
 
 def parse_report(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamReportRow]:
     """Lê o CSV_DUMP linha a linha (sem o cabeçalho é falha temporária); no key-value sai a linha
-    sem ``chave=valor`` e no por hora a que não é ``content_hash``."""
+    sem ``chave=valor`` e no por hora a que não é de ``PRICE_RULE_KEYS``."""
     reader = csv.DictReader(line.decode("utf-8-sig") for line in content)
     if f"{DIMENSION_PREFIX}DATE" not in (reader.fieldnames or ()):
         raise GamUnavailable("o relatório do GAM veio sem o cabeçalho do CSV")
@@ -184,7 +185,7 @@ def parse_report(content: Iterable[bytes], kind: ReportKind) -> Iterator[GamRepo
             if "=" not in criteria:
                 continue
             custom_key, custom_value = criteria.split("=", 1)
-            if kind is ReportKind.PRICE_RULE_HOURS and custom_key != SEGMENT_KEY:
+            if kind is ReportKind.PRICE_RULE_HOURS and custom_key not in PRICE_RULE_KEYS:
                 continue
         yield GamReportRow(
             date=date.fromisoformat(record[f"{DIMENSION_PREFIX}DATE"]),
