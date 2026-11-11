@@ -39,7 +39,7 @@ O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
 A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 
 - `default`: limpeza e o resto.
-- `mail`: e-mails (os avisos dos alertas e os envios agendados; os da API saem direto, depois do commit).
+- `mail`: e-mails (os avisos dos alertas, os envios agendados e o esqueci a senha, que a API enfileira só com o e-mail; os outros da API saem direto, depois do commit).
 - `gam`: Google Ad Manager, que tem cota própria e não pode travar as outras filas.
 
 | Tarefa | Quando | Faz |
@@ -76,6 +76,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.mail.notify_alerts(company_id)` | depois da conferência | um e-mail por alerta e dia para cada pessoa da lista, só dos disparos ainda sem aviso |
 | `avant.default.schedule_reports` | de hora em hora (minuto 2) | pede uma `avant.mail.deliver_reports` por Empresa com envio agendado na hora |
 | `avant.mail.deliver_reports(company_id)` | pelo agendador acima | roda o relatório ou o dashboard como cada pessoa da lista e manda o resumo com o CSV anexo; marca o horário antes de mandar, sem repetir |
+| `avant.mail.request_password_reset(email)` | pela API, no esqueci a senha | gera o token e manda o e-mail de nova senha se a conta existir (`trusted_uow`); o token nunca vai para a fila nem para o log; até 4 retries (30 s a 4 min) em falha de envio |
 | `avant.default.flush_reward_events` | a cada minuto | esvazia `avant:reward:buffer` (eventos e contatos que o `reward.js` manda pela api): renomeia a lista para `avant:reward:processing:{lote}`, grava em pedaços de 5.000 com `record_reward_batch` (idempotente pelo lote) e apaga a chave; uma chave de processamento que sobrou é gravada na execução seguinte |
 | `avant.default.purge_reward_batches` | todo dia às 04:25 UTC | apaga os identificadores de lote de reward com mais de 7 dias |
 
