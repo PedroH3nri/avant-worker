@@ -33,6 +33,14 @@ DUPLICATE = "VALUE_NAME_DUPLICATE"
 log = logging.getLogger("avant.worker.gam")
 
 
+def _optional_text(record: Any, field: str) -> str:
+    """O campo do registro SOAP como texto, ou vazio quando falta ou vem nulo."""
+    try:
+        return str(record[field] or "")
+    except (KeyError, AttributeError):
+        return ""
+
+
 @dataclass(frozen=True)
 class GamTargetNetworkWithTimeZone(GamTargetNetwork):
     """A network alvo do core com o fuso (nome IANA) que o ``getCurrentNetwork`` também traz."""
@@ -56,7 +64,7 @@ class SoapGamWriter:
             network_code=network_code,
             currency_code=str(network["currencyCode"]),
             root_ad_unit_id=str(network["effectiveRootAdUnitId"]),
-            time_zone=str(network["timeZone"]),
+            time_zone=_optional_text(network, "timeZone"),
         )
 
     def seller_id(self, child_network_code: str, groone_network_code: str) -> str | None:

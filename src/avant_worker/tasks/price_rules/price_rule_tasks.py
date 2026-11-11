@@ -35,7 +35,6 @@ from avant_core.price_rules.services import (
     run_site_price_rules,
     store_price_rule_hours,
 )
-from avant_core.shared.errors import InvalidInput
 
 from avant_worker.adapters.gam_reports import ReportKind
 from avant_worker.adapters.gam_writer import GamTargetNetworkWithTimeZone
@@ -90,7 +89,6 @@ def sync_price_rule_hours(company_id: str, network_id: str) -> int:
         days = [today - timedelta(days=1), today]
         try:
             currency, time_zone = _currency_and_time_zone(services, network.network_code)
-            _record_time_zone(services, network, time_zone)
             with services.reports.report(
                 network.network_code,
                 ReportKind.PRICE_RULE_HOURS,
@@ -114,6 +112,7 @@ def sync_price_rule_hours(company_id: str, network_id: str) -> int:
                 extra={"network_id": network_id, "error": exc.code},
             )
             return 0
+        _record_time_zone(services, network, time_zone)
     log.info(
         "horas das regras de preço gravadas",
         extra={"network_id": network_id, "currency": currency, "rows": stored},
@@ -139,16 +138,20 @@ def run_price_rules() -> int:
                 hashes = run_site_price_rules(
                     services.trusted_uow(), site_id=site_id, clock=services.clock
                 )
-                start_changed = run_site_cascades(
-                    services.trusted_uow(), site_id=site_id, clock=services.clock
-                )
             except Exception:
                 log.exception("motor das regras de preço falhou", extra={"site_id": str(site_id)})
                 continue
             _forget_floors(services, site_id, hashes)
+            changed += len(hashes)
+            try:
+                start_changed = run_site_cascades(
+                    services.trusted_uow(), site_id=site_id, clock=services.clock
+                )
+            except Exception:
+                log.exception("motor da Cascata falhou", extra={"site_id": str(site_id)})
+                continue
             if start_changed:
                 _forget_cascades(services, site_id)
-            changed += len(hashes)
     return changed
 
 
@@ -166,11 +169,14 @@ def create_price_rules() -> int:
             created += create_site_price_rules(
                 services.trusted_uow(), site_id=site_id, clock=services.clock
             )
+        except Exception:
+            log.exception("criação das regras de preço falhou", extra={"site_id": str(site_id)})
+        try:
             created += create_site_cascades(
                 services.trusted_uow(), site_id=site_id, clock=services.clock
             )
         except Exception:
-            log.exception("criação das regras de preço falhou", extra={"site_id": str(site_id)})
+            log.exception("criação das Cascatas falhou", extra={"site_id": str(site_id)})
     if created:
         log.info("regras de preço criadas", extra={"rules": created})
     return created
@@ -212,18 +218,17 @@ def _currency_and_time_zone(services: Services, network_code: str) -> tuple[str,
     time_zone = target.time_zone if isinstance(target, GamTargetNetworkWithTimeZone) else ""
     if services.redis is not None and target.currency_code:
         services.redis.set(currency_key, target.currency_code, ex=CURRENCY_CACHE_SECONDS)
-        if time_zone:
-            services.redis.set(time_zone_key, time_zone, ex=CURRENCY_CACHE_SECONDS)
+        services.redis.set(time_zone_key, time_zone, ex=CURRENCY_CACHE_SECONDS)
     return target.currency_code, time_zone
 
 
 def _record_time_zone(services: Services, network: Network, time_zone: str) -> None:
-    """Grava o fuso da network; um nome inválido é registrado e a sincronia segue."""
+    """Grava o fuso da network; qualquer falha é registrada e a sincronia segue."""
     if not time_zone:
         return
     try:
         record_network_time_zone(services.trusted_uow(), network_id=network.id, time_zone=time_zone)
-    except InvalidInput:
+    except Exception:
         log.warning(
             "fuso da network inválido",
             extra={"network_id": str(network.id), "time_zone": time_zone},

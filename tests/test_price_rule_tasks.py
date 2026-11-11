@@ -15,6 +15,7 @@ from avant_core.price_rules.catalog import CASCADE_CACHE_KEY, FLOOR_CACHE_KEY
 from avant_core.price_rules.enums import PriceRuleModel
 from avant_core.price_rules.models import PriceRuleBlock, PriceRuleSettings
 from avant_core.price_rules.services import run_site_price_rules
+from avant_core.shared.errors import NotFound
 
 from avant_worker.adapters import ReportKind, parse_report, report_query
 from avant_worker.adapters.gam_writer import GamTargetNetworkWithTimeZone
@@ -262,18 +263,22 @@ def test_run_price_rules_runs_cascades_after_the_site_rules(
     assert order == ["rules", f"cascades:{site.id}"]
 
 
-def test_run_price_rules_goes_on_when_a_cascade_fails(
+def test_run_price_rules_forgets_and_counts_hashes_when_a_cascade_fails(
     services: Services, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = company(services)
-    enabled_site(services, client, network(services, client))
+    site = enabled_site(services, client, network(services, client))
+    fake_redis = FakeRedis()
+    services.redis = fake_redis  # type: ignore[assignment]
 
     def explode(*_args: Any, **_kwargs: Any) -> bool:
         """A Cascata falha."""
         raise RuntimeError("falhou")
 
+    monkeypatch.setattr(price_rule_tasks, "run_site_price_rules", lambda *_a, **_k: [HASH])
     monkeypatch.setattr(price_rule_tasks, "run_site_cascades", explode)
-    assert run_price_rules.delay().get() == 0
+    assert run_price_rules.delay().get() == 1
+    assert fake_redis.deleted == [FLOOR_CACHE_KEY.format(site_id=site.id, content_hash=HASH)]
 
 
 def test_create_price_rules_creates_cascades_too(
@@ -291,6 +296,21 @@ def test_create_price_rules_creates_cascades_too(
     monkeypatch.setattr(price_rule_tasks, "create_site_cascades", create_cascades)
     assert create_price_rules.delay().get() == 2
     assert created_for == [site.id]
+
+
+def test_create_price_rules_keeps_the_count_when_a_cascade_fails(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = company(services)
+    enabled_site(services, client, network(services, client))
+
+    def explode(*_args: Any, **_kwargs: Any) -> int:
+        """A criação das Cascatas falha."""
+        raise RuntimeError("falhou")
+
+    monkeypatch.setattr(price_rule_tasks, "create_site_price_rules", lambda *_a, **_k: 3)
+    monkeypatch.setattr(price_rule_tasks, "create_site_cascades", explode)
+    assert create_price_rules.delay().get() == 3
 
 
 def network_time_zone(services: Services, network_id: uuid.UUID, company_id: uuid.UUID) -> Any:
@@ -337,3 +357,46 @@ def test_sync_asks_gam_once_for_currency_and_time_zone(services: Services) -> No
     schedule_price_rule_hours.delay().get()
     schedule_price_rule_hours.delay().get()
     assert writer.calls == 1
+
+
+def test_sync_survives_any_failure_recording_the_time_zone(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    services._gam_writer = CurrencyWriter()  # type: ignore[assignment]
+    client = company(services)
+    net = network(services, client)
+    enabled_site(services, client, net)
+    reports(services).rows[("123", ReportKind.PRICE_RULE_HOURS)] = [
+        hour_row(days_ago(1), hour) for hour in range(4)
+    ]
+
+    def not_found(*_args: Any, **_kwargs: Any) -> None:
+        """A network some."""
+        raise NotFound("network")
+
+    monkeypatch.setattr(price_rule_tasks, "record_network_time_zone", not_found)
+    assert schedule_price_rule_hours.delay().get() == 1
+    assert count(services, "metrics.gam_key_value_hourly") == 4
+
+
+def test_sync_does_not_ask_gam_again_when_the_time_zone_is_empty(services: Services) -> None:
+    writer = CurrencyWriter("")
+    services._gam_writer = writer  # type: ignore[assignment]
+    fake_redis = FakeRedis()
+    services.redis = fake_redis  # type: ignore[assignment]
+    client = company(services)
+    net = network(services, client)
+    enabled_site(services, client, net)
+    schedule_price_rule_hours.delay().get()
+    schedule_price_rule_hours.delay().get()
+    assert writer.calls == 1
+    assert network_time_zone(services, net.id, client.id) is None
+
+
+def test_target_network_reads_a_missing_time_zone_as_empty() -> None:
+    from avant_worker.adapters.gam_writer import SoapGamWriter
+
+    writer = SoapGamWriter("chave.json")
+    writer._call = lambda *_a: {"currencyCode": "BRL", "effectiveRootAdUnitId": "9"}  # type: ignore[method-assign]
+    target = writer.target_network("123")
+    assert (target.currency_code, getattr(target, "time_zone", None)) == ("BRL", "")
