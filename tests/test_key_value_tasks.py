@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from avant_core.gam.client.errors import GamError
+from avant_core.gam.client.errors import GamAccessDenied, GamError
 from avant_core.gam.networks.enums import NetworkStatus
 from googleads import errors
 from sqlalchemy import text
@@ -152,3 +152,57 @@ def test_a_gam_failure_puts_the_pairs_back_and_a_key_without_id_is_not_seen(
     assert pending == {b"utm_source:raro"}
     assert services.redis.sismember("kv:buffer:networks", "2100")
     assert services.redis.zscore("kv:seen:2100", "utm_source:raro") is None
+
+
+def test_a_network_without_gam_access_backs_off_and_keeps_its_pairs(
+    redis_services: Services,
+) -> None:
+    services = redis_services
+    assert services.redis is not None
+    fake = FakeTrafficWriter()
+    services._gam_writer = fake  # type: ignore[assignment]
+    calls: list[str] = []
+
+    def denied(network_code: str, key_id: str, values: list[str]) -> list[str]:
+        """A network perdeu o acesso ao GAM."""
+        calls.append(network_code)
+        raise GamAccessDenied("sem acesso")
+
+    fake.ensure_key_values = denied  # type: ignore[method-assign]
+    services.redis.sadd("kv:buffer:2100", "utm_source:fb")
+    services.redis.sadd("kv:buffer:networks", "2100")
+    assert process_key_values.delay().get() == 0
+    assert calls == ["2100"]
+    backoff = cast(int, services.redis.ttl("kv:backoff:2100"))
+    assert 0 < backoff <= 30 * 60
+
+    assert process_key_values.delay().get() == 0
+    assert calls == ["2100"]
+    assert services.redis.smembers("kv:buffer:2100") == {b"utm_source:fb"}
+    assert services.redis.sismember("kv:buffer:networks", "2100")
+
+    services.redis.delete("kv:backoff:2100")
+    fake.ensure_key_values = FakeTrafficWriter().ensure_key_values  # type: ignore[method-assign]
+    assert process_key_values.delay().get() == 1
+
+
+def test_the_lock_is_renewed_for_each_network_and_a_lost_lock_stops_the_run(
+    redis_services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    services = redis_services
+    assert services.redis is not None
+    services._gam_writer = FakeTrafficWriter()  # type: ignore[assignment]
+    renewals: list[str] = []
+
+    def lost(key: str, *, timeout: int) -> bool:
+        """Registra a renovação e diz que a trava já se perdeu."""
+        renewals.append(key)
+        return False
+
+    monkeypatch.setattr(services, "renew_lock", lost)
+    services.redis.sadd("kv:buffer:2100", "utm_source:fb")
+    services.redis.sadd("kv:buffer:2200", "utm_source:ig")
+    services.redis.sadd("kv:buffer:networks", "2100", "2200")
+    assert process_key_values.delay().get() == 0
+    assert renewals == ["key-values"]
+    assert services.redis.scard("kv:buffer:networks") == 2

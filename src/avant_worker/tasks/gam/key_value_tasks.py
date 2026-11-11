@@ -4,6 +4,10 @@ O contrato com a avant-api, no Redis: ``kv:networks:connected`` (as networks que
 ``refresh_key_value_networks`` mantém), ``kv:buffer:networks`` e ``kv:buffer:{network}`` (os pares
 ``key:value`` pendentes). ``kv:seen:{network}`` guarda por 24 horas o que já foi conferido, para
 não ir ao banco a cada página. Os ids das keys vêm do GAM pelo nome, guardados por 1 hora.
+
+Uma network sem acesso ao GAM (erro permanente) ganha ``kv:backoff:{network}`` por 30 minutos:
+os pares ficam no buffer e ela não gasta cota a cada 30 s até a lista de conectadas tirá-la.
+A trava ``key-values`` dura 10 minutos e é renovada a cada network; perdida, a execução para.
 """
 
 import logging
@@ -12,6 +16,7 @@ import uuid
 from collections import defaultdict
 from typing import cast
 
+from avant_core.gam.client.errors import GamAccessDenied, GamNetworkNotFound
 from avant_core.gam.key_values.services import (
     TRAFFIC_KEYS,
     connected_network_codes,
@@ -30,28 +35,42 @@ BUFFER = "kv:buffer:{network}"
 PROCESSING = "kv:processing:{network}:{run}"
 SEEN = "kv:seen:{network}"
 KEY_IDS = "kv:key-ids:{network}"
+BACKOFF = "kv:backoff:{network}"
 SEEN_FOR = 24 * 60 * 60
 KEY_IDS_FOR = 60 * 60
+BACKOFF_FOR = 30 * 60
+LOCK_KEY = "key-values"
 LOCK_FOR = 10 * 60
+PERMANENT_ERRORS = (GamAccessDenied, GamNetworkNotFound)
 
 
 @app.task(name="avant.gam.process_key_values")
 def process_key_values() -> int:
     """A cada 30 s: esvazia o buffer de cada network e cria no GAM os valores novos; uma network
-    que falha não para as outras, e os pares dela voltam ao buffer."""
+    que falha não para as outras, os pares dela voltam ao buffer e o erro permanente dá recuo."""
     services = get_services()
     if services.redis is None:
         return 0
     stored = 0
-    with services.lock("key-values", timeout=LOCK_FOR) as acquired:
+    with services.lock(LOCK_KEY, timeout=LOCK_FOR) as acquired:
         if not acquired:
             return 0
         for raw in cast(set[bytes], services.redis.smembers(PENDING_NETWORKS)):
             network = raw.decode() if isinstance(raw, bytes) else str(raw)
+            if not services.renew_lock(LOCK_KEY, timeout=LOCK_FOR):
+                log.warning("trava dos key-values perdida; o resto fica para a próxima execução")
+                break
+            if services.redis.exists(BACKOFF.format(network=network)):
+                continue
             try:
                 stored += _process_network(services, network)
             except SoftTimeLimitExceeded:
                 raise
+            except PERMANENT_ERRORS:
+                services.redis.set(BACKOFF.format(network=network), 1, ex=BACKOFF_FOR)
+                log.exception(
+                    "network sem acesso ao GAM; recuo de 30 min", extra={"network": network}
+                )
             except Exception:
                 log.exception("key-values da network não foram criados", extra={"network": network})
     return stored
