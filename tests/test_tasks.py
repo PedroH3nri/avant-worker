@@ -131,6 +131,26 @@ def test_a_broken_smtp_url_does_not_start_and_hides_the_password(
     assert "SMTP_URL" in message and "segredo-smtp" not in message
 
 
+@pytest.mark.parametrize(
+    "smtp_url",
+    [
+        "http://avant:segredo-smtp@smtp.exemplo.com",
+        "smtps://avant:segredo-smtp@smtp.exemplo.com:porta",
+        "smtps://avant:segredo-smtp-çã@smtp.exemplo.com",
+    ],
+)
+def test_an_invalid_smtp_url_fails_in_the_settings_showing_only_the_name(
+    clean_env: pytest.MonkeyPatch, smtp_url: str
+) -> None:
+    with pytest.raises(ValidationError) as error:
+        Settings(**{**SMTP, "smtp_url": smtp_url})
+    shown = str(error.value) + repr(error.value.errors(include_input=False))
+    assert "segredo-smtp" not in shown
+    env = {"REDIS_URL": "redis://r", "MAIL_TRANSPORT": "smtp", "SMTP_URL": smtp_url}
+    message = _stopped_names(clean_env, env)
+    assert message.endswith(": SMTP_URL") and "segredo-smtp" not in message
+
+
 def test_the_worker_does_not_start_without_redis_and_shows_only_names(
     clean_env: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

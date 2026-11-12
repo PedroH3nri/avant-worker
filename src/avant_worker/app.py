@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from avant_worker.logs import configure_logging
 from avant_worker.services import _mailer, reset_after_fork
-from avant_worker.settings import BrokerSettings, MissingVariable, Settings
+from avant_worker.settings import BrokerSettings, InvalidVariable, Settings
 
 QUEUES = ("default", "mail", "gam")
 
@@ -259,13 +259,13 @@ def check_settings() -> Settings:
 
 def _variable_names(error: ValidationError) -> list[str]:
     """Os nomes das variáveis com problema: o campo, ou o nome que a checagem do transporte de
-    e-mail levantou (``MissingVariable``); nunca o valor."""
+    e-mail levantou (``InvalidVariable``); nunca o valor."""
     names: set[str] = set()
     for item in error.errors():
         cause = item.get("ctx", {}).get("error")
         if item["loc"]:
             names.add(str(item["loc"][0]).upper())
-        elif isinstance(cause, MissingVariable):
+        elif isinstance(cause, InvalidVariable):
             names.add(str(cause))
     return sorted(names)
 
