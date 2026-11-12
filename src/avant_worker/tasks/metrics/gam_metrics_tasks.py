@@ -86,13 +86,18 @@ def sync_metrics(
     company_id: str, network_id: str, start: str, end: str, attempt: int = 0
 ) -> dict[str, Any]:
     """Grava as métricas da network entre ``start`` e ``end`` (datas ISO, inclusive); a marca de
-    fila do período sai no fim, a não ser que o lote tenha voltado para a fila."""
-    result: dict[str, Any] = {}
+    fila do período sai no fim, a não ser que o lote volte para a fila ou vá ser repetido."""
+    keep_mark = False
     try:
         result = _sync_metrics(company_id, network_id, start, end, attempt)
+        keep_mark = "attempt" in result
         return result
+    except RETRY_FOR:
+        max_retries = sync_metrics.max_retries
+        keep_mark = max_retries is None or sync_metrics.request.retries < max_retries
+        raise
     finally:
-        if "attempt" not in result:
+        if not keep_mark:
             _clear_queued(get_services(), network_id, start, end)
 
 

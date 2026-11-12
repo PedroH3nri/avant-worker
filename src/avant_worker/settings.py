@@ -1,13 +1,12 @@
 """Configuração por variáveis de ambiente. Os valores reais ficam só nas VMs."""
 
-from typing import Literal
-
 from avant_core.db.engine import EngineSettings
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APPLICATION_NAME = "avant-worker"
 REDIS_SCHEME = r"^rediss?://"
+NOT_BLANK = r"\S"
 
 
 class BrokerSettings(BaseSettings):
@@ -15,7 +14,6 @@ class BrokerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    avant_env: Literal["local", "test", "staging", "production"] = "local"
     celery_broker_url: str = "amqp://guest:guest@localhost:5672//"
     # Resultados das tarefas. O agendador só publica; o worker exige o Redis (``Settings``).
     redis_url: str | None = None
@@ -39,7 +37,7 @@ class Settings(BrokerSettings):
 
     # E-mails: sempre pelo Resend; nenhum link com token vai para o log.
     app_base_url: str = "http://localhost:8080"
-    resend_api_key: str = Field(min_length=1)
+    resend_api_key: str = Field(min_length=1, pattern=NOT_BLANK)
     mail_from: str = "Avant <nao-responda@avant.groone.com>"
 
     # Google Ad Manager: só os workers da fila gam têm a chave da conta de serviço.
