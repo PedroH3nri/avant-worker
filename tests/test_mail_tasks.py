@@ -1,3 +1,4 @@
+import smtplib
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
@@ -7,7 +8,7 @@ import pytest
 from avant_core.company.enums import InvitationKind
 from avant_core.identity.models import User
 from avant_core.identity.models.password_reset import PASSWORD_RESETS_PER_HOUR
-from avant_core.mail import ResendMailer
+from avant_core.mail import ResendMailer, SmtpMailer
 from avant_core.ports import MailNotSent, Notice
 from celery.app.task import Task
 from celery.contrib.testing.mocks import TaskMessage
@@ -118,6 +119,43 @@ def test_the_real_resend_mailer_failing_makes_the_task_try_again(services: Servi
     )
     request_password_reset.delay(EMAIL)
     assert sent == [503, 503, 200]
+    assert count_resets(services) == 2
+
+
+def test_the_smtp_mailer_failing_for_now_makes_the_task_try_again(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    add_user(services, EMAIL)
+    replies: list[int] = [421, 421, 250]
+    delivered: list[int] = []
+
+    class FakeSmtp:
+        """Servidor SMTP que responde 421 (ocupado) duas vezes e depois aceita."""
+
+        def __init__(self, host: str, port: int, timeout: float) -> None:
+            self.host = host
+
+        def send_message(self, email: Any, to_addrs: list[str]) -> None:
+            """Aceita ou recusa por agora, na ordem programada."""
+            code = replies.pop(0)
+            delivered.append(code)
+            if code != 250:
+                raise smtplib.SMTPResponseException(code, b"ocupado, tente depois")
+
+        def quit(self) -> None:
+            """Encerra a conversa."""
+
+        def close(self) -> None:
+            """Fecha o socket."""
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSmtp)
+    services.mailer = SmtpMailer(
+        url="smtp://mailpit:1025",
+        sender="Avant <nao-responda@avant.groone.com>",
+        base_url="https://avant.groone.com",
+    )
+    request_password_reset.delay(EMAIL)
+    assert delivered == [421, 421, 250]
     assert count_resets(services) == 2
 
 

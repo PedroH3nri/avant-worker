@@ -19,7 +19,7 @@ from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
-from avant_core.mail import ResendMailer
+from avant_core.mail import build_mailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from avant_core.ports import Mailer
@@ -267,11 +267,13 @@ def _redis_client(settings: Settings) -> "redis.Redis":
 
 
 def _mailer(settings: Settings) -> Mailer:
-    """O Resend, em todo ambiente: nenhum link com token vai para o log."""
-    return ResendMailer(
-        api_key=settings.resend_api_key,
+    """O mailer do transporte configurado, montado pelo core sem olhar o ambiente."""
+    return build_mailer(
+        transport=settings.mail_transport,
         sender=settings.mail_from,
         base_url=settings.app_base_url,
+        resend_api_key=settings.resend_api_key,
+        smtp_url=settings.smtp_url,
     )
 
 

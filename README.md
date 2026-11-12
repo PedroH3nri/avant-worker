@@ -111,7 +111,10 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | `DATABASE_URL` | papel `avant_app` |
 | `CELERY_BROKER_URL` | RabbitMQ |
 | `REDIS_URL` | travas, buffers e eventos; obrigatório em todo ambiente (`redis://` ou `rediss://`); vazio, o worker não sobe |
-| `APP_BASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` | e-mails, sempre pelo Resend (`RESEND_API_KEY` obrigatório em todo ambiente; no desenvolvimento, uma chave com o remetente de sandbox do Resend) |
+| `MAIL_TRANSPORT` | `resend` ou `smtp`, obrigatório e sem padrão em todo ambiente; sem ele, o worker não sobe |
+| `RESEND_API_KEY` | obrigatório com `MAIL_TRANSPORT=resend` |
+| `SMTP_URL` | obrigatório com `MAIL_TRANSPORT=smtp`: `smtps://usuario:senha@servidor:porta`, ou `smtp://` só para servidor na mesma rede (o Mailpit do compose) |
+| `APP_BASE_URL`, `MAIL_FROM` | endereço dos links e remetente dos e-mails |
 | `GAM_SERVICE_ACCOUNT_FILE` | caminho do JSON da chave da conta de serviço; só no worker-gam |
 | `GAM_GROONE_NETWORK_CODE` | network da Groone (MCM) |
 | `GAM_SOAP_VERSION` | opcional: versão da API SOAP dos relatórios (ex.: `v202608`); vazio usa a mais nova do `googleads` |
