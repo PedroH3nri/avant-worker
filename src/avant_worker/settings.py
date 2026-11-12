@@ -3,6 +3,7 @@
 from typing import Literal
 
 from avant_core.db.engine import EngineSettings
+from avant_core.mail import parse_smtp_url
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,15 +15,16 @@ NOT_BLANK = r"\S"
 class BrokerSettings(BaseSettings):
     """O que o agendador precisa: ele só publica tarefas, não fala com o banco."""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore", hide_input_in_errors=True)
 
     celery_broker_url: str = "amqp://guest:guest@localhost:5672//"
     # Resultados das tarefas. O agendador só publica; o worker exige o Redis (``Settings``).
     redis_url: str | None = None
 
 
-class MissingVariable(ValueError):
-    """Falta a variável que o transporte de e-mail escolhido precisa; a mensagem é só o nome."""
+class InvalidVariable(ValueError):
+    """Falta ou foi recusada a variável que o transporte de e-mail precisa; a mensagem é só o
+    nome, nunca o valor."""
 
 
 class Settings(BrokerSettings):
@@ -69,10 +71,19 @@ class Settings(BrokerSettings):
     def _transport_configured(self) -> "Settings":
         """Exige a configuração do transporte escolhido: a chave do Resend ou a URL do SMTP."""
         if self.mail_transport == "resend" and not self.resend_api_key:
-            raise MissingVariable("RESEND_API_KEY")
-        if self.mail_transport == "smtp" and not self.smtp_url:
-            raise MissingVariable("SMTP_URL")
+            raise InvalidVariable("RESEND_API_KEY")
+        if self.mail_transport == "smtp":
+            self._check_smtp_url()
         return self
+
+    def _check_smtp_url(self) -> None:
+        """Confere a ``SMTP_URL`` com o ``parse_smtp_url`` do core; recusada, o erro é só o nome."""
+        if not self.smtp_url:
+            raise InvalidVariable("SMTP_URL")
+        try:
+            parse_smtp_url(self.smtp_url)
+        except ValueError:
+            raise InvalidVariable("SMTP_URL") from None
 
     def engine_settings(self) -> EngineSettings:
         """O pool e os prazos do Postgres deste worker, com o nome ``avant-worker``."""
