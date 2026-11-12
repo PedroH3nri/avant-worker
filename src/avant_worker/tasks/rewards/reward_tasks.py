@@ -42,8 +42,6 @@ def flush_reward_events() -> dict[str, int]:
     sobraram de uma execução anterior."""
     services = get_services()
     totals = {"events": 0, "leads": 0, "skipped": 0}
-    if services.redis is None:
-        return totals
     with services.lock("reward-events", timeout=LOCK_FOR) as acquired:
         if not acquired:
             return totals
@@ -73,8 +71,6 @@ def purge_reward_batches_task() -> int:
 def forget_latest_reward_pages(services: Services, network_id: uuid.UUID) -> int:
     """Depois de importar o inventário da network: apaga o cache das páginas cujo reward usa os
     ad units mais recentes. Falhar aqui não falha a importação (o cache expira em 1 hora)."""
-    if services.redis is None:
-        return 0
     try:
         pages = latest_reward_pages(services.trusted_uow(), network_id=network_id)
         keys = [PAGE.format(domain=domain, path=path) for domain, path in pages]
@@ -86,7 +82,6 @@ def forget_latest_reward_pages(services: Services, network_id: uuid.UUID) -> int
 
 def _flush(services: Services, key: str) -> dict[str, int]:
     """Grava a lista da chave em pedaços e apaga a chave no fim."""
-    assert services.redis is not None
     totals = {"events": 0, "leads": 0, "skipped": 0}
     batch_id = key.rsplit(":", 1)[-1]
     raw = cast(list[bytes], services.redis.lrange(key, 0, -1))

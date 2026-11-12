@@ -209,14 +209,13 @@ def _currency_and_time_zone(services: Services, network_code: str) -> tuple[str,
     ``getCurrentNetwork`` quando falta um dos dois (só leitura no GAM)."""
     currency_key = CURRENCY_CACHE.format(network=network_code)
     time_zone_key = TIME_ZONE_CACHE.format(network=network_code)
-    if services.redis is not None:
-        cached_currency = services.redis.get(currency_key)
-        cached_time_zone = services.redis.get(time_zone_key)
-        if isinstance(cached_currency, bytes) and isinstance(cached_time_zone, bytes):
-            return cached_currency.decode(), cached_time_zone.decode()
+    cached_currency = services.redis.get(currency_key)
+    cached_time_zone = services.redis.get(time_zone_key)
+    if isinstance(cached_currency, bytes) and isinstance(cached_time_zone, bytes):
+        return cached_currency.decode(), cached_time_zone.decode()
     target = services.gam_writer.target_network(network_code)
     time_zone = target.time_zone if isinstance(target, GamTargetNetworkWithTimeZone) else ""
-    if services.redis is not None and target.currency_code:
+    if target.currency_code:
         services.redis.set(currency_key, target.currency_code, ex=CURRENCY_CACHE_SECONDS)
         services.redis.set(time_zone_key, time_zone, ex=CURRENCY_CACHE_SECONDS)
     return target.currency_code, time_zone
@@ -236,8 +235,8 @@ def _record_time_zone(services: Services, network: Network, time_zone: str) -> N
 
 
 def _forget_floors(services: Services, site_id: uuid.UUID, hashes: list[str]) -> None:
-    """Apaga o cache dos floors dos hashes que mudaram; sem Redis, nada a fazer."""
-    if services.redis is None or not hashes:
+    """Apaga o cache dos floors dos hashes que mudaram."""
+    if not hashes:
         return
     services.redis.delete(
         *(FLOOR_CACHE_KEY.format(site_id=site_id, content_hash=value) for value in hashes)
@@ -245,7 +244,5 @@ def _forget_floors(services: Services, site_id: uuid.UUID, hashes: list[str]) ->
 
 
 def _forget_cascades(services: Services, site_id: uuid.UUID) -> None:
-    """Apaga o cache das Cascatas do site, que a api lê; sem Redis, nada a fazer."""
-    if services.redis is None:
-        return
+    """Apaga o cache das Cascatas do site, que a api lê."""
     services.redis.delete(CASCADE_CACHE_KEY.format(site_id=site_id))

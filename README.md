@@ -39,7 +39,7 @@ O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
 A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 
 - `default`: limpeza e o resto.
-- `mail`: e-mails (os avisos dos alertas e os envios agendados; os da API saem direto, depois do commit).
+- `mail`: e-mails (os avisos dos alertas, os envios agendados e o esqueci a senha, que a API enfileira só com o e-mail; os outros da API saem direto, depois do commit).
 - `gam`: Google Ad Manager, que tem cota própria e não pode travar as outras filas.
 
 | Tarefa | Quando | Faz |
@@ -76,6 +76,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.mail.notify_alerts(company_id)` | depois da conferência | um e-mail por alerta e dia para cada pessoa da lista, só dos disparos ainda sem aviso |
 | `avant.default.schedule_reports` | de hora em hora (minuto 2) | pede uma `avant.mail.deliver_reports` por Empresa com envio agendado na hora |
 | `avant.mail.deliver_reports(company_id)` | pelo agendador acima | roda o relatório ou o dashboard como cada pessoa da lista e manda o resumo com o CSV anexo; marca o horário antes de mandar, sem repetir |
+| `avant.mail.request_password_reset(email)` | pela API, no esqueci a senha | gera o token e manda o e-mail de nova senha se a conta existir (`trusted_uow`); o token nunca vai para a fila nem para o log, e o e-mail sai mascarado no log e nos eventos do Celery; até 4 retries (30 s a 4 min) só em erro temporário (`MailNotSent` ou falha do banco). Cada tentativa grava um link novo antes de enviar: no pior caso, a pessoa tem até 3 links válidos na mesma hora (o limite de pedidos por hora encerra as tentativas) |
 | `avant.default.flush_reward_events` | a cada minuto | esvazia `avant:reward:buffer` (eventos e contatos que o `reward.js` manda pela api): renomeia a lista para `avant:reward:processing:{lote}`, grava em pedaços de 5.000 com `record_reward_batch` (idempotente pelo lote) e apaga a chave; uma chave de processamento que sobrou é gravada na execução seguinte |
 | `avant.default.purge_reward_batches` | todo dia às 04:25 UTC | apaga os identificadores de lote de reward com mais de 7 dias |
 
@@ -109,8 +110,8 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | --- | --- |
 | `DATABASE_URL` | papel `avant_app` |
 | `CELERY_BROKER_URL` | RabbitMQ |
-| `REDIS_URL` | resultados e travas; obrigatório em staging e produção |
-| `APP_BASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` | avisos por e-mail (`RESEND_API_KEY` obrigatório em staging e produção) |
+| `REDIS_URL` | travas, buffers e eventos; obrigatório em todo ambiente (`redis://` ou `rediss://`); vazio, o worker não sobe |
+| `APP_BASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` | e-mails, sempre pelo Resend (`RESEND_API_KEY` obrigatório em todo ambiente; no desenvolvimento, uma chave com o remetente de sandbox do Resend) |
 | `GAM_SERVICE_ACCOUNT_FILE` | caminho do JSON da chave da conta de serviço; só no worker-gam |
 | `GAM_GROONE_NETWORK_CODE` | network da Groone (MCM) |
 | `GAM_SOAP_VERSION` | opcional: versão da API SOAP dos relatórios (ex.: `v202608`); vazio usa a mais nova do `googleads` |

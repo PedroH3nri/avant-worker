@@ -51,8 +51,6 @@ def flush_page_views() -> dict[str, int]:
     execução anterior."""
     services = get_services()
     totals = dict.fromkeys(TOTALS, 0)
-    if services.redis is None:
-        return totals
     with services.lock("page-views", timeout=LOCK_SECONDS) as acquired:
         if not acquired:
             return totals
@@ -87,8 +85,6 @@ def ensure_page_view_partitions_task() -> int:
 def forget_network_ad_tags(services: Services, network_id: uuid.UUID) -> int:
     """Depois de importar o inventário da network: apaga o cache das tags dos sites dela. Falhar
     aqui não falha a importação (o cache expira em 1 hora)."""
-    if services.redis is None:
-        return 0
     try:
         tag_keys = network_ad_tag_keys(services.trusted_uow(), network_id=network_id)
         cache_keys = [TAG_CACHE.format(key=key) for key in tag_keys]
@@ -100,7 +96,6 @@ def forget_network_ad_tags(services: Services, network_id: uuid.UUID) -> int:
 
 def _flush(services: Services, key: str) -> dict[str, int]:
     """Grava a lista da chave em pedaços e apaga a chave no fim."""
-    assert services.redis is not None
     totals = dict.fromkeys(TOTALS, 0)
     raw = cast(list[bytes], services.redis.lrange(key, 0, -1))
     countries = services.countries

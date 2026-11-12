@@ -1,11 +1,16 @@
 import uuid
 from datetime import timedelta
+from typing import Any
 
+import pytest
 from avant_core.identity.models import Session, User
+from avant_core.mail import ResendMailer
+from pydantic import ValidationError
 from sqlalchemy import text
 
-from avant_worker.app import QUEUES, _route, app
-from avant_worker.services import Services
+from avant_worker.app import QUEUES, _route, app, check_settings
+from avant_worker.services import REDIS_TIMEOUT_SECONDS, Services, _mailer, _redis_client
+from avant_worker.settings import Settings
 from avant_worker.tasks.maintenance import purge_expired
 
 
@@ -56,17 +61,64 @@ def test_purge_expired(services: Services) -> None:
     assert left == 1
 
 
-def test_deployed_envs_need_redis_and_resend() -> None:
-    import pytest
-    from pydantic import ValidationError
+def test_the_worker_needs_redis_and_resend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    with pytest.raises(ValidationError) as error:
+        Settings(database_url="postgresql://x", _env_file=None)
+    missing = {str(item["loc"][0]) for item in error.value.errors()}
+    assert missing == {"redis_url", "resend_api_key"}
+    Settings(database_url="postgresql://x", redis_url="redis://r", resend_api_key="re_x")
 
-    from avant_worker.settings import Settings
 
-    with pytest.raises(ValidationError, match="REDIS_URL, RESEND_API_KEY"):
-        Settings(database_url="postgresql://x", avant_env="staging")
-    Settings(
+def test_a_resend_key_with_only_spaces_does_not_start() -> None:
+    with pytest.raises(ValidationError):
+        Settings(database_url="postgresql://x", redis_url="redis://r", resend_api_key="   ")
+
+
+def test_the_redis_client_has_short_socket_timeouts() -> None:
+    settings = Settings(database_url="postgresql://x", redis_url="redis://r", resend_api_key="re_x")
+    options = _redis_client(settings).connection_pool.connection_kwargs
+    assert 0 < options["socket_timeout"] <= REDIS_TIMEOUT_SECONDS
+    assert 0 < options["socket_connect_timeout"] <= REDIS_TIMEOUT_SECONDS
+
+
+def test_the_worker_does_not_start_without_redis_or_resend(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://avant_app:segredo-do-banco@db/avant")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    with pytest.raises(SystemExit) as stopped:
+        check_settings()
+    logged = [str(record.__dict__) for record in caplog.records]
+    assert "REDIS_URL, RESEND_API_KEY" in str(stopped.value)
+    assert any("REDIS_URL, RESEND_API_KEY" in record for record in logged)
+    assert "segredo-do-banco" not in str(stopped.value) + "".join(logged)
+
+
+@pytest.mark.parametrize("field", ["redis_url", "resend_api_key", "database_url"])
+def test_an_empty_required_variable_does_not_start(field: str) -> None:
+    values: dict[str, Any] = {
+        "database_url": "postgresql://x",
+        "redis_url": "redis://r",
+        "resend_api_key": "re_x",
+        field: "",
+    }
+    with pytest.raises(ValidationError):
+        Settings(**values)
+
+
+def test_the_redis_url_needs_a_redis_scheme() -> None:
+    with pytest.raises(ValidationError):
+        Settings(database_url="postgresql://x", redis_url="http://r", resend_api_key="re_x")
+    Settings(database_url="postgresql://x", redis_url="rediss://r", resend_api_key="re_x")
+
+
+def test_the_worker_mailer_is_always_resend() -> None:
+    settings = Settings(
         database_url="postgresql://x",
-        avant_env="production",
         redis_url="redis://r",
         resend_api_key="re_x",
     )
+    assert isinstance(_mailer(settings), ResendMailer)

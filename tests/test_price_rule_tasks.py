@@ -167,8 +167,7 @@ def test_hours_rules_and_engine_run_in_the_network_currency(services: Services) 
     net = network(services, client)
     site = enabled_site(services, client, net)
     cache = FLOOR_CACHE_KEY.format(site_id=site.id, content_hash=HASH)
-    if services.redis is not None:
-        services.redis.set(cache, "{}")
+    services.redis.set(cache, "{}")
     yesterday = days_ago(1)
     reports(services).rows[("123", ReportKind.PRICE_RULE_HOURS)] = [
         hour_row(yesterday, hour) for hour in range(4)
@@ -179,7 +178,7 @@ def test_hours_rules_and_engine_run_in_the_network_currency(services: Services) 
     assert create_price_rules.delay().get() == 1
     assert run_price_rules.delay().get() == 1
     assert count(services, "price_rule_history") == 1
-    assert services.redis is None or not services.redis.exists(cache)
+    assert not services.redis.exists(cache)
     assert maintain_price_rule_partitions.delay().get()["created"] >= 0
 
 

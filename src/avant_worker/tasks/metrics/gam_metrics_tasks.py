@@ -11,8 +11,14 @@
 
 Com a trava da network ocupada, o lote volta para a fila daqui a um minuto em vez de ser
 descartado: senão a sincronia e o reprocessamento da mesma network, ou dois lotes do
-histórico, deixavam buracos sem erro. O prazo cobre a fila inteira do histórico, com cada lote
-segurando a trava por até 30 minutos.
+histórico, deixavam buracos sem erro. Depois de oito horas de espera, a tarefa falha com
+``NetworkBusy``, para o buraco aparecer no monitoramento. A trava dura 30 minutos e é
+renovada entre os dois relatórios; perdida no meio, o lote volta para a fila.
+
+Os ``schedule_*`` marcam no Redis cada network e período que enfileiram
+(``gam:metrics:queued:...``) e não enfileiram de novo enquanto a cópia anterior espera a trava:
+com a network ocupada por horas, as sincronias de hora não se acumulam na fila. A marca sai no
+``finally`` da tarefa, com sucesso ou erro; só fica quando o lote volta para a fila.
 
 Só networks com o inventário na própria network (M.A e conexão manual). As do MCM Manage
 Inventory ficam na network da Groone e entram numa tarefa própria, que lê um relatório só
@@ -46,6 +52,8 @@ log = logging.getLogger("avant.worker.metrics")
 
 LOCK_SECONDS = 30 * 60
 
+QUEUED = "gam:metrics:queued:{network_id}:{start}:{end}"
+
 BACKFILL_DAYS = 90
 
 BACKFILL_CHUNK_DAYS = 7
@@ -57,7 +65,13 @@ LOCK_RETRY_SECONDS = 60
 
 MAX_LOCK_ATTEMPTS = 480
 
+QUEUED_FOR = LOCK_RETRY_SECONDS * MAX_LOCK_ATTEMPTS + 60 * 60
+
 RETRY_FOR = (GamUnavailable,)
+
+
+class NetworkBusy(Exception):
+    """O lote esperou a trava da network pelo prazo inteiro e desistiu."""
 
 
 @app.task(
@@ -71,11 +85,31 @@ RETRY_FOR = (GamUnavailable,)
 def sync_metrics(
     company_id: str, network_id: str, start: str, end: str, attempt: int = 0
 ) -> dict[str, Any]:
-    """Grava as métricas da network entre ``start`` e ``end`` (datas ISO, inclusive)."""
+    """Grava as métricas da network entre ``start`` e ``end`` (datas ISO, inclusive); a marca de
+    fila do período sai no fim, a não ser que o lote volte para a fila ou vá ser repetido."""
+    keep_mark = False
+    try:
+        result = _sync_metrics(company_id, network_id, start, end, attempt)
+        keep_mark = "attempt" in result
+        return result
+    except RETRY_FOR:
+        max_retries = sync_metrics.max_retries
+        keep_mark = max_retries is None or sync_metrics.request.retries < max_retries
+        raise
+    finally:
+        if not keep_mark:
+            _clear_queued(get_services(), network_id, start, end)
+
+
+def _sync_metrics(
+    company_id: str, network_id: str, start: str, end: str, attempt: int
+) -> dict[str, Any]:
+    """Baixa e grava os dois relatórios com a trava da network; ocupada, o lote volta à fila."""
     services = get_services()
     company_uuid, network_uuid = uuid.UUID(company_id), uuid.UUID(network_id)
     first_day, last_day = date.fromisoformat(start), date.fromisoformat(end)
-    with services.lock(f"gam:metrics:{network_id}", timeout=LOCK_SECONDS) as locked:
+    lock_key = f"gam:metrics:{network_id}"
+    with services.lock(lock_key, timeout=LOCK_SECONDS) as locked:
         if not locked:
             return _network_busy(company_id, network_id, start, end, attempt)
         network = _network(services, company_uuid, network_uuid)
@@ -84,10 +118,16 @@ def sync_metrics(
         if _reads_groone_network(network):
             return {"skipped": "manage_inventory"}
         started = time.monotonic()
+        stored: list[StoredMetrics] = []
         try:
-            stored = [
-                _store(services, network, kind, first_day, last_day) for kind in METRIC_REPORTS
-            ]
+            for kind in METRIC_REPORTS:
+                if stored and not services.renew_lock(lock_key, timeout=LOCK_SECONDS):
+                    log.warning(
+                        "trava das métricas perdida entre os relatórios",
+                        extra={"network_id": network_id, "start": start, "end": end},
+                    )
+                    return _network_busy(company_id, network_id, start, end, attempt)
+                stored.append(_store(services, network, kind, first_day, last_day))
         except GamError as exc:
             if not exc.permanent:
                 raise
@@ -114,11 +154,12 @@ def sync_metrics(
 def _network_busy(
     company_id: str, network_id: str, start: str, end: str, attempt: int
 ) -> dict[str, Any]:
-    """A network está ocupada: o lote volta para a fila, até o limite de tentativas."""
+    """A network está ocupada: o lote volta para a fila; no limite de tentativas, levanta
+    ``NetworkBusy`` para a falha aparecer no monitoramento."""
     extra = {"network_id": network_id, "start": start, "end": end, "attempt": attempt}
     if attempt >= MAX_LOCK_ATTEMPTS:
-        log.warning("métricas da network desistiram: trava ocupada demais", extra=extra)
-        return {"skipped": "locked"}
+        log.error("métricas da network desistiram: trava ocupada demais", extra=extra)
+        raise NetworkBusy(f"network {network_id} ocupada de {start} a {end}")
     log.info("métricas da network adiadas: trava ocupada", extra=extra)
     _try_later(company_id, network_id, start, end, attempt + 1)
     return {"skipped": "locked", "attempt": attempt + 1}
@@ -161,11 +202,29 @@ def schedule_reprocess() -> int:
 
 
 def _fan_out(start: date, end: date) -> int:
-    """Agenda ``sync_metrics`` do período para cada network ativa e devolve quantas."""
-    networks = sync_service.active_networks(get_services().trusted_uow())
+    """Agenda ``sync_metrics`` do período para cada network ativa que ainda não tem o mesmo
+    período na fila; devolve quantas agendou."""
+    services = get_services()
+    networks = sync_service.active_networks(services.trusted_uow())
+    scheduled = 0
     for company_id, network_id in networks:
-        sync_metrics.delay(str(company_id), str(network_id), start.isoformat(), end.isoformat())
-    return len(networks)
+        first_day, last_day = start.isoformat(), end.isoformat()
+        if not _mark_queued(services, str(network_id), first_day, last_day):
+            continue
+        sync_metrics.delay(str(company_id), str(network_id), first_day, last_day)
+        scheduled += 1
+    return scheduled
+
+
+def _mark_queued(services: Services, network_id: str, start: str, end: str) -> bool:
+    """Marca o período da network como na fila; ``False`` se já estava marcado."""
+    marker = QUEUED.format(network_id=network_id, start=start, end=end)
+    return bool(services.redis.set(marker, 1, nx=True, ex=QUEUED_FOR))
+
+
+def _clear_queued(services: Services, network_id: str, start: str, end: str) -> None:
+    """Tira a marca de fila do período: a cópia que esperava já rodou ou desistiu."""
+    services.redis.delete(QUEUED.format(network_id=network_id, start=start, end=end))
 
 
 def _network(services: Services, company_id: uuid.UUID, network_id: uuid.UUID) -> Network | None:

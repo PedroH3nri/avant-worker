@@ -8,11 +8,16 @@ O domínio vem do GAM do cliente, que controla o nome e o DNS: toda conexão (in
 redirecionamento) passa pelo ``PublicOnlyBackend``, que resolve o host, recusa endereço privado,
 loopback, link-local ou reservado e portas fora de 80 e 443, e conecta no IP já conferido, sem
 resolver de novo (contra DNS rebinding). Endereço IPv6 que carrega um IPv4 (mapeado, compatível,
-NAT64 ``64:ff9b::/96``, 6to4 e Teredo) vale pelo IPv4 de dentro; o NAT64 local
-``64:ff9b:1::/48`` é sempre recusado. Os endereços conferidos são tentados em ordem.
+SIIT ``::ffff:0:0:0/96``, NAT64 ``64:ff9b::/96``, 6to4 e Teredo) vale pelo IPv4 de dentro; o
+NAT64 local ``64:ff9b:1::/48`` é sempre recusado. Os endereços conferidos são tentados em ordem.
+
+Um NAT64 com prefixo próprio da rede (fora dos prefixos conhecidos) não se reconhece pelo
+endereço: a defesa definitiva contra SSRF é o firewall de saída da VM (avant-infra).
 
 Cada busca tem um prazo total de 20 segundos que cobre o DNS, a conexão, o TLS, os cabeçalhos,
 os redirecionamentos e o corpo: toda leitura e escrita na rede usa só o tempo que sobra.
+Se o prazo acaba no meio do corpo, a página volta com o que chegou até ali (truncada, sem
+marca): o checklist confere o que está no começo da página e o ads.txt é pequeno.
 """
 
 import contextlib
@@ -37,8 +42,9 @@ MAX_BYTES = 2 * 1024 * 1024
 DOMAIN_INTERVAL_SECONDS = 1.0
 TOTAL_SECONDS = 20.0
 ALLOWED_PORTS = frozenset({80, 443})
-RESOLVER_THREADS = 4
+RESOLVER_THREADS = 8
 IPV4_COMPATIBLE = ipaddress.IPv6Network("::/96")
+IPV4_TRANSLATED_SIIT = ipaddress.IPv6Network("::ffff:0:0:0/96")
 NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
 NAT64_LOCAL = ipaddress.IPv6Network("64:ff9b:1::/48")
 IPV4_BITS = 0xFFFFFFFF
@@ -67,10 +73,10 @@ def _public_ipv4(ip: ipaddress.IPv4Address) -> bool:
 
 
 def _embedded_ipv4(ip: ipaddress.IPv6Address) -> list[ipaddress.IPv4Address]:
-    """Os IPv4 que o endereço IPv6 alcança: mapeado, compatível, NAT64, 6to4 ou Teredo."""
+    """Os IPv4 que o endereço IPv6 alcança: mapeado, compatível, SIIT, NAT64, 6to4 ou Teredo."""
     if ip.ipv4_mapped is not None:
         return [ip.ipv4_mapped]
-    if ip in IPV4_COMPATIBLE or ip in NAT64_WELL_KNOWN:
+    if ip in IPV4_COMPATIBLE or ip in IPV4_TRANSLATED_SIIT or ip in NAT64_WELL_KNOWN:
         return [ipaddress.IPv4Address(int(ip) & IPV4_BITS)]
     if ip.sixtofour is not None:
         return [ip.sixtofour]
@@ -91,11 +97,14 @@ def _time_left(timeout: float | None, error: type[Exception]) -> float | None:
 
 
 def _resolve(host: str, port: int, timeout: float | None) -> list[str]:
-    """Os endereços do host, sem repetir, com o DNS dentro do prazo da busca."""
+    """Os endereços do host, sem repetir, com o DNS dentro do prazo da busca. No tempo esgotado,
+    cancela a consulta que ainda espera no pool; um ``getaddrinfo`` já rodando segue até o fim."""
+    wait = _time_left(timeout, httpcore.ConnectTimeout)
     lookup = _resolver.submit(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
     try:
-        found = lookup.result(timeout=_time_left(timeout, httpcore.ConnectTimeout))
+        found = lookup.result(timeout=wait)
     except LookupTimeout as exc:
+        lookup.cancel()
         raise httpcore.ConnectTimeout(f"{host} não resolveu a tempo") from exc
     except OSError as exc:
         raise httpcore.ConnectError(f"{host} não resolveu") from exc
@@ -162,7 +171,8 @@ class PublicOnlyBackend(httpcore.SyncBackend):
                 failure = exc
                 continue
             return DeadlineStream(stream)
-        assert failure is not None
+        if failure is None:
+            raise httpcore.ConnectError(f"{host} sem endereço para conectar")
         raise failure
 
 
@@ -210,7 +220,8 @@ class HttpPageFetcher:
         self._last_request[host] = time.monotonic()
 
     def _read(self, response: httpx.Response) -> str:
-        """O texto da resposta até 2 MB ou o fim do prazo; o que não é texto volta vazio."""
+        """O texto da resposta até 2 MB ou o fim do prazo (o que chegou, sem marca de corte).
+        O que não é texto volta vazio."""
         kind = response.headers.get("content-type", "text/html").lower()
         if "html" not in kind and "text" not in kind:
             return ""

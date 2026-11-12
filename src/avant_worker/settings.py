@@ -1,9 +1,12 @@
 """Configuração por variáveis de ambiente. Os valores reais ficam só nas VMs."""
 
-from typing import Literal
-
-from pydantic import model_validator
+from avant_core.db.engine import EngineSettings
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+APPLICATION_NAME = "avant-worker"
+REDIS_SCHEME = r"^rediss?://"
+NOT_BLANK = r"\S"
 
 
 class BrokerSettings(BaseSettings):
@@ -11,20 +14,30 @@ class BrokerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    avant_env: Literal["local", "test", "staging", "production"] = "local"
     celery_broker_url: str = "amqp://guest:guest@localhost:5672//"
-    # Resultados das tarefas e trava por network. Sem Redis, só no local e nos testes.
+    # Resultados das tarefas. O agendador só publica; o worker exige o Redis (``Settings``).
     redis_url: str | None = None
 
 
 class Settings(BrokerSettings):
-    # Papel avant_app: sem BYPASSRLS e sem ser dono das tabelas.
-    database_url: str
-    db_pool_size: int = 5
+    """O que o worker precisa. Redis e Resend são obrigatórios em todo ambiente: sem eles, o
+    worker não sobe (no desenvolvimento, uma chave do Resend com remetente de sandbox)."""
 
-    # E-mails (avisos de network com erro ou desconectada). Sem chave, só no log.
+    # Papel avant_app: sem BYPASSRLS e sem ser dono das tabelas.
+    database_url: str = Field(min_length=1)
+    # Pool e prazos de cada processo filho, iguais em todo ambiente (tetos no avant-core).
+    db_pool_size: int = 5
+    db_max_overflow: int = 0
+    db_pool_timeout_seconds: float = 30
+    db_pool_recycle_seconds: int = 1800
+    db_statement_timeout_ms: int = 300_000
+    db_idle_in_transaction_timeout_ms: int = 60_000
+    db_lock_timeout_ms: int = 30_000
+    redis_url: str = Field(min_length=1, pattern=REDIS_SCHEME)
+
+    # E-mails: sempre pelo Resend; nenhum link com token vai para o log.
     app_base_url: str = "http://localhost:8080"
-    resend_api_key: str | None = None
+    resend_api_key: str = Field(min_length=1, pattern=NOT_BLANK)
     mail_from: str = "Avant <nao-responda@avant.groone.com>"
 
     # Google Ad Manager: só os workers da fila gam têm a chave da conta de serviço.
@@ -44,18 +57,15 @@ class Settings(BrokerSettings):
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
 
-    @model_validator(mode="after")
-    def _deployed_envs(self) -> "Settings":
-        """Exige as variáveis obrigatórias em staging e produção."""
-        if self.avant_env in ("staging", "production"):
-            missing = [
-                name
-                for name, value in (
-                    ("REDIS_URL", self.redis_url),
-                    ("RESEND_API_KEY", self.resend_api_key),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError(f"faltam variáveis em {self.avant_env}: {', '.join(missing)}")
-        return self
+    def engine_settings(self) -> EngineSettings:
+        """O pool e os prazos do Postgres deste worker, com o nome ``avant-worker``."""
+        return EngineSettings(
+            application_name=APPLICATION_NAME,
+            pool_size=self.db_pool_size,
+            max_overflow=self.db_max_overflow,
+            pool_timeout_seconds=self.db_pool_timeout_seconds,
+            pool_recycle_seconds=self.db_pool_recycle_seconds,
+            statement_timeout_ms=self.db_statement_timeout_ms,
+            idle_in_transaction_timeout_ms=self.db_idle_in_transaction_timeout_ms,
+            lock_timeout_ms=self.db_lock_timeout_ms,
+        )

@@ -8,23 +8,24 @@ import os
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
 import redis
+from avant_core.db.engine import new_engine, reset_pool_after_fork
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
-from avant_core.mail import LogMailer, ResendMailer
+from avant_core.mail import ResendMailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from avant_core.site_checklists.interfaces import PageFetcher
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 
 from avant_worker.adapters.exchange_rates import OpenExchangeRates
 from avant_worker.adapters.gam_client import RestGamClient
@@ -34,6 +35,8 @@ from avant_worker.adapters.geoip import GeoLiteCountries
 from avant_worker.adapters.page_fetcher import HttpPageFetcher
 from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
+
+REDIS_TIMEOUT_SECONDS = 5
 
 
 class ReportSource(Protocol):
@@ -97,8 +100,8 @@ class Services:
     settings: Settings
     engine: Engine
     clock: Clock
-    mailer: Mailer = field(default_factory=lambda: LogMailer(base_url="", show_links=False))
-    redis: "redis.Redis | None" = None
+    mailer: Mailer
+    redis: "redis.Redis"
     # Montado na primeira tarefa do GAM (ou entregue pronto nos testes).
     gam_override: Gam | None = None
     reports_override: "ReportSource | None" = None
@@ -125,15 +128,13 @@ class Services:
     @classmethod
     def build(cls, settings: Settings) -> "Services":
         """Monta banco, Redis e email a partir das configurações."""
-        engine = create_engine(
-            settings.database_url, pool_size=settings.db_pool_size, pool_pre_ping=True
-        )
+        engine = new_engine(settings.database_url, settings.engine_settings())
         return cls(
             settings=settings,
             engine=engine,
             clock=SystemClock(),
             mailer=_mailer(settings),
-            redis=redis.Redis.from_url(settings.redis_url) if settings.redis_url else None,
+            redis=_redis_client(settings),
         )
 
     def uow(self, company_id: uuid.UUID) -> SqlAlchemyUnitOfWork:
@@ -229,10 +230,7 @@ class Services:
 
     @contextmanager
     def lock(self, key: str, *, timeout: int) -> Iterator[bool]:
-        """Trava no Redis (``True`` se conseguiu). Sem Redis, não trava: só no local."""
-        if self.redis is None:
-            yield True
-            return
+        """Trava no Redis (``True`` se conseguiu)."""
         lock = self.redis.lock(f"avant:lock:{key}", timeout=timeout, blocking=False)
         if not lock.acquire():
             yield False
@@ -259,15 +257,22 @@ class Services:
         return True
 
 
+def _redis_client(settings: Settings) -> "redis.Redis":
+    """O cliente do Redis com prazos curtos: um Redis travado não segura a tarefa."""
+    return redis.Redis.from_url(
+        settings.redis_url,
+        socket_timeout=REDIS_TIMEOUT_SECONDS,
+        socket_connect_timeout=REDIS_TIMEOUT_SECONDS,
+    )
+
+
 def _mailer(settings: Settings) -> Mailer:
-    """Usa o Resend quando há chave; senão só registra os emails no log."""
-    if settings.resend_api_key:
-        return ResendMailer(
-            api_key=settings.resend_api_key,
-            sender=settings.mail_from,
-            base_url=settings.app_base_url,
-        )
-    return LogMailer(base_url=settings.app_base_url, show_links=settings.avant_env == "local")
+    """O Resend, em todo ambiente: nenhum link com token vai para o log."""
+    return ResendMailer(
+        api_key=settings.resend_api_key,
+        sender=settings.mail_from,
+        base_url=settings.app_base_url,
+    )
 
 
 _current: tuple[int, Services] | None = None
@@ -279,6 +284,15 @@ def get_services() -> Services:
     if _current is None or _current[0] != os.getpid():
         _current = (os.getpid(), Services.build(Settings()))
     return _current[1]
+
+
+def reset_after_fork() -> None:
+    """No processo filho: troca o pool herdado do pai por um novo, sem fechar as conexões dele,
+    e deixa os serviços serem montados de novo neste processo."""
+    global _current
+    if _current is not None:
+        reset_pool_after_fork(_current[1].engine)
+    _current = None
 
 
 def use_services(services: Services | None) -> None:
