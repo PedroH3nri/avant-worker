@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -11,11 +12,17 @@ from avant_core.ports import MailNotSent, Notice
 from celery.app.task import Task
 from celery.contrib.testing.mocks import TaskMessage
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeout
 
 from avant_worker.app import _route, app
 from avant_worker.services import Services
-from avant_worker.tasks.mail import request_password_reset
-from avant_worker.tasks.mail.password_reset_tasks import MAX_RETRIES, MaskedRequest
+from avant_worker.tasks.mail import password_reset_tasks, request_password_reset
+from avant_worker.tasks.mail.password_reset_tasks import (
+    MAX_RETRIES,
+    MaskedRequest,
+    TemporaryDatabaseError,
+)
 
 EMAIL = "ana@acai.com.br"
 
@@ -131,10 +138,47 @@ def test_an_error_that_is_not_temporary_is_not_retried(services: Services) -> No
 
 
 def test_the_email_never_reaches_the_celery_log_or_events() -> None:
-    message = TaskMessage("avant.mail.request_password_reset", args=(EMAIL,))
+    message = TaskMessage(
+        "avant.mail.request_password_reset",
+        args=(EMAIL,),
+        argsrepr=repr((EMAIL,)),
+        kwargsrepr=repr({"email": EMAIL}),
+    )
     request = MaskedRequest(message, app=app, task=request_password_reset)
     assert EMAIL not in request.argsrepr + request.kwargsrepr
     assert EMAIL not in str(request.info(safe=True))
+    assert EMAIL not in str(request.request_dict.get("argsrepr"))
+    assert EMAIL not in str(request.request_dict.get("kwargsrepr"))
+
+
+@pytest.mark.parametrize(
+    "database_error",
+    [
+        OperationalError(
+            "SELECT * FROM users WHERE email = %(email)s", {"email": EMAIL}, Exception("caiu")
+        ),
+        PoolTimeout(f"pool cheio ao buscar {EMAIL}"),
+    ],
+)
+def test_a_database_error_retries_without_the_email(
+    monkeypatch: pytest.MonkeyPatch, database_error: Exception
+) -> None:
+    def failing_use_case(*_: Any, **__: Any) -> None:
+        """O banco falha com o e-mail nos parâmetros."""
+        raise database_error
+
+    monkeypatch.setattr(password_reset_tasks, "request_password_reset_use_case", failing_use_case)
+    monkeypatch.setattr(
+        password_reset_tasks,
+        "get_services",
+        lambda: SimpleNamespace(trusted_uow=lambda: None, clock=None, mailer=None),
+    )
+    with pytest.raises(TemporaryDatabaseError) as raised:
+        request_password_reset._orig_run(EMAIL)  # type: ignore[attr-defined]
+    error = raised.value
+    assert EMAIL not in str(error) + repr(error) + repr(error.args)
+    assert error.__cause__ is None and error.__context__ is None
+    assert TemporaryDatabaseError in request_password_reset.autoretry_for  # type: ignore[attr-defined]
 
 
 def test_a_retry_publishes_the_email_masked(monkeypatch: pytest.MonkeyPatch) -> None:

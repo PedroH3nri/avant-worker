@@ -36,6 +36,8 @@ from avant_worker.adapters.page_fetcher import HttpPageFetcher
 from avant_worker.adapters.page_views import MongoPageViews
 from avant_worker.settings import Settings
 
+REDIS_TIMEOUT_SECONDS = 5
+
 
 class ReportSource(Protocol):
     """O que as tarefas de métricas pedem ao GAM: as linhas de um relatório."""
@@ -132,7 +134,7 @@ class Services:
             engine=engine,
             clock=SystemClock(),
             mailer=_mailer(settings),
-            redis=redis.Redis.from_url(settings.redis_url),
+            redis=_redis_client(settings),
         )
 
     def uow(self, company_id: uuid.UUID) -> SqlAlchemyUnitOfWork:
@@ -253,6 +255,15 @@ class Services:
         except redis.exceptions.LockError:
             return False
         return True
+
+
+def _redis_client(settings: Settings) -> "redis.Redis":
+    """O cliente do Redis com prazos curtos: um Redis travado não segura a tarefa."""
+    return redis.Redis.from_url(
+        settings.redis_url,
+        socket_timeout=REDIS_TIMEOUT_SECONDS,
+        socket_connect_timeout=REDIS_TIMEOUT_SECONDS,
+    )
 
 
 def _mailer(settings: Settings) -> Mailer:

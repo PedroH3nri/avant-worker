@@ -116,7 +116,6 @@ def services(engine: Engine) -> Iterator[Services]:
     s = Services(
         settings=Settings(
             database_url=APP_URL or "",
-            avant_env="test",
             redis_url=REDIS_URL,
             resend_api_key="re_teste",
         ),

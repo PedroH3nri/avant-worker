@@ -97,8 +97,8 @@ def _time_left(timeout: float | None, error: type[Exception]) -> float | None:
 
 
 def _resolve(host: str, port: int, timeout: float | None) -> list[str]:
-    """Os endereços do host, sem repetir, com o DNS dentro do prazo da busca.
-    No tempo esgotado, cancela a consulta que ainda espera na fila do pool."""
+    """Os endereços do host, sem repetir, com o DNS dentro do prazo da busca. No tempo esgotado,
+    cancela a consulta que ainda espera no pool; um ``getaddrinfo`` já rodando segue até o fim."""
     wait = _time_left(timeout, httpcore.ConnectTimeout)
     lookup = _resolver.submit(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
     try:

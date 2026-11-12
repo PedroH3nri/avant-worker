@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 
 from avant_worker.app import QUEUES, _route, app, check_settings
-from avant_worker.services import Services, _mailer
+from avant_worker.services import REDIS_TIMEOUT_SECONDS, Services, _mailer, _redis_client
 from avant_worker.settings import Settings
 from avant_worker.tasks.maintenance import purge_expired
 
@@ -61,18 +61,26 @@ def test_purge_expired(services: Services) -> None:
     assert left == 1
 
 
-@pytest.mark.parametrize("env", ["local", "test", "staging", "production"])
-def test_every_env_needs_redis_and_resend(env: str) -> None:
+def test_the_worker_needs_redis_and_resend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
     with pytest.raises(ValidationError) as error:
-        Settings(database_url="postgresql://x", avant_env=env, _env_file=None)
+        Settings(database_url="postgresql://x", _env_file=None)
     missing = {str(item["loc"][0]) for item in error.value.errors()}
     assert missing == {"redis_url", "resend_api_key"}
-    Settings(
-        database_url="postgresql://x",
-        avant_env=env,
-        redis_url="redis://r",
-        resend_api_key="re_x",
-    )
+    Settings(database_url="postgresql://x", redis_url="redis://r", resend_api_key="re_x")
+
+
+def test_a_resend_key_with_only_spaces_does_not_start() -> None:
+    with pytest.raises(ValidationError):
+        Settings(database_url="postgresql://x", redis_url="redis://r", resend_api_key="   ")
+
+
+def test_the_redis_client_has_short_socket_timeouts() -> None:
+    settings = Settings(database_url="postgresql://x", redis_url="redis://r", resend_api_key="re_x")
+    options = _redis_client(settings).connection_pool.connection_kwargs
+    assert 0 < options["socket_timeout"] <= REDIS_TIMEOUT_SECONDS
+    assert 0 < options["socket_connect_timeout"] <= REDIS_TIMEOUT_SECONDS
 
 
 def test_the_worker_does_not_start_without_redis_or_resend(
@@ -110,7 +118,6 @@ def test_the_redis_url_needs_a_redis_scheme() -> None:
 def test_the_worker_mailer_is_always_resend() -> None:
     settings = Settings(
         database_url="postgresql://x",
-        avant_env="local",
         redis_url="redis://r",
         resend_api_key="re_x",
     )

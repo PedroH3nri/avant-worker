@@ -404,6 +404,34 @@ def test_the_queue_mark_stays_while_waiting_and_leaves_when_the_task_fails(
     assert not services.redis.exists(marker)
 
 
+def test_a_temporary_failure_that_will_be_retried_keeps_the_queue_mark(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = "gam:metrics:queued:rede:2026-11-01:2026-11-02"
+
+    def unavailable(*_: Any) -> dict[str, Any]:
+        """O GAM fora do ar."""
+        raise GamUnavailable("fora do ar")
+
+    monkeypatch.setattr(gam_metrics_tasks, "_sync_metrics", unavailable)
+    services.redis.set(marker, 1)
+    with pytest.raises(GamUnavailable):
+        sync_metrics._orig_run(  # type: ignore[attr-defined]
+            "empresa", "rede", "2026-11-01", "2026-11-02"
+        )
+    assert services.redis.exists(marker)
+
+    sync_metrics.push_request(retries=sync_metrics.max_retries)
+    try:
+        with pytest.raises(GamUnavailable):
+            sync_metrics._orig_run(  # type: ignore[attr-defined]
+                "empresa", "rede", "2026-11-01", "2026-11-02"
+            )
+    finally:
+        sync_metrics.pop_request()
+    assert not services.redis.exists(marker)
+
+
 def test_a_failing_chunk_does_not_stop_the_rest_of_the_history(
     services: Services, monkeypatch: pytest.MonkeyPatch
 ) -> None:
