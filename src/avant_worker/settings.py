@@ -2,7 +2,10 @@
 
 from typing import Literal
 
+from avant_core.db.engine import EngineSettings
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+APPLICATION_NAME = "avant-worker"
 
 
 class BrokerSettings(BaseSettings):
@@ -22,7 +25,14 @@ class Settings(BrokerSettings):
 
     # Papel avant_app: sem BYPASSRLS e sem ser dono das tabelas.
     database_url: str
+    # Pool e prazos de cada processo filho, iguais em todo ambiente (tetos no avant-core).
     db_pool_size: int = 5
+    db_max_overflow: int = 0
+    db_pool_timeout_seconds: float = 30
+    db_pool_recycle_seconds: int = 1800
+    db_statement_timeout_ms: int = 300_000
+    db_idle_in_transaction_timeout_ms: int = 300_000
+    db_lock_timeout_ms: int = 30_000
     redis_url: str
 
     # E-mails: sempre pelo Resend; nenhum link com token vai para o log.
@@ -46,3 +56,16 @@ class Settings(BrokerSettings):
 
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
+
+    def engine_settings(self) -> EngineSettings:
+        """O pool e os prazos do Postgres deste worker, com o nome ``avant-worker``."""
+        return EngineSettings(
+            application_name=APPLICATION_NAME,
+            pool_size=self.db_pool_size,
+            max_overflow=self.db_max_overflow,
+            pool_timeout_seconds=self.db_pool_timeout_seconds,
+            pool_recycle_seconds=self.db_pool_recycle_seconds,
+            statement_timeout_ms=self.db_statement_timeout_ms,
+            idle_in_transaction_timeout_ms=self.db_idle_in_transaction_timeout_ms,
+            lock_timeout_ms=self.db_lock_timeout_ms,
+        )

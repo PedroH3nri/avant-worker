@@ -14,6 +14,7 @@ import pytest
 import redis
 from alembic import command
 from alembic.config import Config
+from avant_core.db.engine import new_engine
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
 from avant_core.mail import LogMailer
@@ -99,7 +100,10 @@ def engine() -> Iterator[Engine]:
     os.environ["DATABASE_MIGRATIONS_URL"] = OWNER_URL
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
-    eng = create_engine(APP_URL)
+    engine_settings = Settings(
+        database_url=APP_URL, redis_url="redis://r", resend_api_key="re_teste"
+    ).engine_settings()
+    eng = new_engine(APP_URL, engine_settings)
     yield eng
     eng.dispose()
 
