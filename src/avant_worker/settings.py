@@ -3,9 +3,11 @@
 from typing import Literal
 
 from avant_core.db.engine import EngineSettings
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APPLICATION_NAME = "avant-worker"
+REDIS_SCHEME = r"^rediss?://"
 
 
 class BrokerSettings(BaseSettings):
@@ -24,20 +26,20 @@ class Settings(BrokerSettings):
     worker não sobe (no desenvolvimento, uma chave do Resend com remetente de sandbox)."""
 
     # Papel avant_app: sem BYPASSRLS e sem ser dono das tabelas.
-    database_url: str
+    database_url: str = Field(min_length=1)
     # Pool e prazos de cada processo filho, iguais em todo ambiente (tetos no avant-core).
     db_pool_size: int = 5
     db_max_overflow: int = 0
     db_pool_timeout_seconds: float = 30
     db_pool_recycle_seconds: int = 1800
     db_statement_timeout_ms: int = 300_000
-    db_idle_in_transaction_timeout_ms: int = 300_000
+    db_idle_in_transaction_timeout_ms: int = 60_000
     db_lock_timeout_ms: int = 30_000
-    redis_url: str
+    redis_url: str = Field(min_length=1, pattern=REDIS_SCHEME)
 
     # E-mails: sempre pelo Resend; nenhum link com token vai para o log.
     app_base_url: str = "http://localhost:8080"
-    resend_api_key: str
+    resend_api_key: str = Field(min_length=1)
     mail_from: str = "Avant <nao-responda@avant.groone.com>"
 
     # Google Ad Manager: só os workers da fila gam têm a chave da conta de serviço.

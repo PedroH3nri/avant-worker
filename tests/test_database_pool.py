@@ -68,7 +68,7 @@ def test_the_connection_carries_the_worker_name_and_timeouts(services: Services)
         name = connection.execute(text("SHOW application_name")).scalar_one()
         idle = connection.execute(text("SHOW idle_in_transaction_session_timeout")).scalar_one()
     assert name == "avant-worker"
-    assert idle == "5min"
+    assert idle == "1min"
 
 
 def test_the_app_role_passes_the_start_check(engine: Engine) -> None:
