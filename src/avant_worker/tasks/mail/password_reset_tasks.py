@@ -9,9 +9,10 @@ sai com os argumentos mascarados no cabeçalho da mensagem.
 ``trusted_uow``: quem pede a nova senha ainda não tem sessão nem Empresa ativa.
 
 Só repete em erro temporário: o e-mail que não saiu (``MailNotSent``, depois das duas tentativas
-do ``ResendMailer`` ou do ``SmtpMailer``) e a falha de conexão, prazo ou pool do banco. O erro do banco traz a
-consulta e os parâmetros (com o e-mail): a tarefa troca por ``TemporaryDatabaseError``, só com o
-nome da classe e sem a exceção original encadeada. Espera 30 s, 1, 2 e 4 minutos.
+do ``ResendMailer`` ou do ``SmtpMailer``) e a falha de conexão, prazo ou pool do banco. O erro
+do banco traz a consulta e os parâmetros (com o e-mail): a tarefa troca por
+``TemporaryDatabaseError``, só com o nome da classe e sem a exceção original encadeada.
+Espera 30 s, 1, 2 e 4 minutos.
 Cada tentativa grava um link novo antes de enviar, então no pior caso a pessoa tem até 3 links
 válidos na mesma hora; o limite de 3 pedidos por hora do caso de uso encerra as tentativas em
 silêncio. Com ``acks_late``, o pior caso é um e-mail repetido, nunca um e-mail perdido.
