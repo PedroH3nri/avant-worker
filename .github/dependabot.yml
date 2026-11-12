@@ -8,3 +8,15 @@ updates:
     groups:
       imagens:
         patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /
+    target-branch: pre-develop
+    schedule:
+      interval: weekly
+    # O avant-core é nosso: a versão sobe pela skill avant-lancar-versao.
+    ignore:
+      - dependency-name: avant-core
+    groups:
+      dependencias:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
