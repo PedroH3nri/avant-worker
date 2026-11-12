@@ -382,6 +382,28 @@ def test_a_period_already_waiting_in_the_queue_is_not_queued_again(services: Ser
     assert not services.redis.exists(marker)
 
 
+def test_the_queue_mark_stays_while_waiting_and_leaves_when_the_task_fails(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = company(services)
+    connected = network(services, owner)
+    monkeypatch.setattr(gam_metrics_tasks, "_try_later", lambda *args: None)
+    marker = f"gam:metrics:queued:{connected.id}:2026-11-01:2026-11-02"
+    services.redis.set(marker, 1)
+    held = services.redis.lock(f"avant:lock:gam:metrics:{connected.id}", timeout=60, blocking=False)
+    assert held.acquire()
+    try:
+        sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-02").get()
+    finally:
+        held.release()
+    assert services.redis.exists(marker)
+
+    reports(services).fail_next.append(RuntimeError("relatório quebrado"))  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError):
+        sync_metrics.delay(str(owner.id), str(connected.id), "2026-11-01", "2026-11-02").get()
+    assert not services.redis.exists(marker)
+
+
 def test_a_failing_chunk_does_not_stop_the_rest_of_the_history(
     services: Services, monkeypatch: pytest.MonkeyPatch
 ) -> None:

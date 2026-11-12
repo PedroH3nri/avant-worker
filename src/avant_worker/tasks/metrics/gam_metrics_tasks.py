@@ -17,7 +17,8 @@ renovada entre os dois relatórios; perdida no meio, o lote volta para a fila.
 
 Os ``schedule_*`` marcam no Redis cada network e período que enfileiram
 (``gam:metrics:queued:...``) e não enfileiram de novo enquanto a cópia anterior espera a trava:
-com a network ocupada por horas, as sincronias de hora não se acumulam na fila.
+com a network ocupada por horas, as sincronias de hora não se acumulam na fila. A marca sai no
+``finally`` da tarefa, com sucesso ou erro; só fica quando o lote volta para a fila.
 
 Só networks com o inventário na própria network (M.A e conexão manual). As do MCM Manage
 Inventory ficam na network da Groone e entram numa tarefa própria, que lê um relatório só
@@ -84,7 +85,21 @@ class NetworkBusy(Exception):
 def sync_metrics(
     company_id: str, network_id: str, start: str, end: str, attempt: int = 0
 ) -> dict[str, Any]:
-    """Grava as métricas da network entre ``start`` e ``end`` (datas ISO, inclusive)."""
+    """Grava as métricas da network entre ``start`` e ``end`` (datas ISO, inclusive); a marca de
+    fila do período sai no fim, a não ser que o lote tenha voltado para a fila."""
+    result: dict[str, Any] = {}
+    try:
+        result = _sync_metrics(company_id, network_id, start, end, attempt)
+        return result
+    finally:
+        if "attempt" not in result:
+            _clear_queued(get_services(), network_id, start, end)
+
+
+def _sync_metrics(
+    company_id: str, network_id: str, start: str, end: str, attempt: int
+) -> dict[str, Any]:
+    """Baixa e grava os dois relatórios com a trava da network; ocupada, o lote volta à fila."""
     services = get_services()
     company_uuid, network_uuid = uuid.UUID(company_id), uuid.UUID(network_id)
     first_day, last_day = date.fromisoformat(start), date.fromisoformat(end)
@@ -92,7 +107,6 @@ def sync_metrics(
     with services.lock(lock_key, timeout=LOCK_SECONDS) as locked:
         if not locked:
             return _network_busy(company_id, network_id, start, end, attempt)
-        _clear_queued(services, network_id, start, end)
         network = _network(services, company_uuid, network_uuid)
         if network is None:
             return {"skipped": "not_found"}
@@ -140,7 +154,6 @@ def _network_busy(
     extra = {"network_id": network_id, "start": start, "end": end, "attempt": attempt}
     if attempt >= MAX_LOCK_ATTEMPTS:
         log.error("métricas da network desistiram: trava ocupada demais", extra=extra)
-        _clear_queued(get_services(), network_id, start, end)
         raise NetworkBusy(f"network {network_id} ocupada de {start} a {end}")
     log.info("métricas da network adiadas: trava ocupada", extra=extra)
     _try_later(company_id, network_id, start, end, attempt + 1)

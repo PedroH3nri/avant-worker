@@ -1,5 +1,6 @@
 import uuid
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from avant_core.identity.models import Session, User
@@ -86,6 +87,24 @@ def test_the_worker_does_not_start_without_redis_or_resend(
     assert "REDIS_URL, RESEND_API_KEY" in str(stopped.value)
     assert any("REDIS_URL, RESEND_API_KEY" in record for record in logged)
     assert "segredo-do-banco" not in str(stopped.value) + "".join(logged)
+
+
+@pytest.mark.parametrize("field", ["redis_url", "resend_api_key", "database_url"])
+def test_an_empty_required_variable_does_not_start(field: str) -> None:
+    values: dict[str, Any] = {
+        "database_url": "postgresql://x",
+        "redis_url": "redis://r",
+        "resend_api_key": "re_x",
+        field: "",
+    }
+    with pytest.raises(ValidationError):
+        Settings(**values)
+
+
+def test_the_redis_url_needs_a_redis_scheme() -> None:
+    with pytest.raises(ValidationError):
+        Settings(database_url="postgresql://x", redis_url="http://r", resend_api_key="re_x")
+    Settings(database_url="postgresql://x", redis_url="rediss://r", resend_api_key="re_x")
 
 
 def test_the_worker_mailer_is_always_resend() -> None:
