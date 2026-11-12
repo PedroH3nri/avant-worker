@@ -18,8 +18,8 @@ from celery.schedules import crontab
 from pydantic import ValidationError
 
 from avant_worker.logs import configure_logging
-from avant_worker.services import reset_after_fork
-from avant_worker.settings import BrokerSettings, Settings
+from avant_worker.services import _mailer, reset_after_fork
+from avant_worker.settings import BrokerSettings, MissingVariable, Settings
 
 QUEUES = ("default", "mail", "gam")
 
@@ -247,13 +247,35 @@ def check_settings() -> Settings:
     """Confere a configuração do worker; levanta ``SystemExit`` com os nomes do que falta ou
     está errado, sem os valores (o erro do pydantic traz as outras variáveis, com segredos)."""
     try:
-        return Settings()
+        settings = Settings()
     except ValidationError as exc:
-        names = sorted({str(error["loc"][0]).upper() for error in exc.errors() if error["loc"]})
-        logging.getLogger("avant.worker").critical(
-            "configuração do worker incompleta", extra={"variables": ", ".join(names)}
-        )
-        raise SystemExit(f"configuração do worker incompleta: {', '.join(names)}") from None
+        _refuse_start_for(_variable_names(exc))
+    try:
+        _mailer(settings)
+    except ValueError as exc:
+        _refuse_start(str(exc))
+    return settings
+
+
+def _variable_names(error: ValidationError) -> list[str]:
+    """Os nomes das variáveis com problema: o campo, ou o nome que a checagem do transporte de
+    e-mail levantou (``MissingVariable``); nunca o valor."""
+    names: set[str] = set()
+    for item in error.errors():
+        cause = item.get("ctx", {}).get("error")
+        if item["loc"]:
+            names.add(str(item["loc"][0]).upper())
+        elif isinstance(cause, MissingVariable):
+            names.add(str(cause))
+    return sorted(names)
+
+
+def _refuse_start_for(names: list[str]) -> NoReturn:
+    """Registra os nomes das variáveis que faltam e encerra a subida."""
+    logging.getLogger("avant.worker").critical(
+        "configuração do worker incompleta", extra={"variables": ", ".join(names)}
+    )
+    raise SystemExit(f"configuração do worker incompleta: {', '.join(names)}")
 
 
 @signals.setup_logging.connect

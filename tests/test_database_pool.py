@@ -22,7 +22,12 @@ WORKER_GAM_PROCESSES = 2
 
 def _settings(database_url: str = "postgresql+psycopg://avant_app:app@localhost/avant") -> Settings:
     """As settings padrão do worker, com as variáveis obrigatórias preenchidas."""
-    return Settings(database_url=database_url, redis_url="redis://r", resend_api_key="re_x")
+    return Settings(
+        database_url=database_url,
+        redis_url="redis://r",
+        mail_transport="resend",
+        resend_api_key="re_x",
+    )
 
 
 def test_default_engine_settings_are_valid_and_named() -> None:

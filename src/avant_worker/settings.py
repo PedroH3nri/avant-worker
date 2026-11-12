@@ -1,7 +1,9 @@
 """Configuração por variáveis de ambiente. Os valores reais ficam só nas VMs."""
 
+from typing import Literal
+
 from avant_core.db.engine import EngineSettings
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APPLICATION_NAME = "avant-worker"
@@ -19,9 +21,13 @@ class BrokerSettings(BaseSettings):
     redis_url: str | None = None
 
 
+class MissingVariable(ValueError):
+    """Falta a variável que o transporte de e-mail escolhido precisa; a mensagem é só o nome."""
+
+
 class Settings(BrokerSettings):
-    """O que o worker precisa. Redis e Resend são obrigatórios em todo ambiente: sem eles, o
-    worker não sobe (no desenvolvimento, uma chave do Resend com remetente de sandbox)."""
+    """O que o worker precisa. Redis e o transporte de e-mail (com a configuração dele) são
+    obrigatórios em todo ambiente: sem eles, o worker não sobe."""
 
     # Papel avant_app: sem BYPASSRLS e sem ser dono das tabelas.
     database_url: str = Field(min_length=1)
@@ -35,9 +41,11 @@ class Settings(BrokerSettings):
     db_lock_timeout_ms: int = 30_000
     redis_url: str = Field(min_length=1, pattern=REDIS_SCHEME)
 
-    # E-mails: sempre pelo Resend; nenhum link com token vai para o log.
+    # E-mails: MAIL_TRANSPORT sem padrão; resend pede RESEND_API_KEY e smtp pede SMTP_URL.
     app_base_url: str = "http://localhost:8080"
-    resend_api_key: str = Field(min_length=1, pattern=NOT_BLANK)
+    mail_transport: Literal["resend", "smtp"]
+    resend_api_key: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    smtp_url: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
     mail_from: str = "Avant <nao-responda@avant.groone.com>"
 
     # Google Ad Manager: só os workers da fila gam têm a chave da conta de serviço.
@@ -56,6 +64,15 @@ class Settings(BrokerSettings):
 
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
+
+    @model_validator(mode="after")
+    def _transport_configured(self) -> "Settings":
+        """Exige a configuração do transporte escolhido: a chave do Resend ou a URL do SMTP."""
+        if self.mail_transport == "resend" and not self.resend_api_key:
+            raise MissingVariable("RESEND_API_KEY")
+        if self.mail_transport == "smtp" and not self.smtp_url:
+            raise MissingVariable("SMTP_URL")
+        return self
 
     def engine_settings(self) -> EngineSettings:
         """O pool e os prazos do Postgres deste worker, com o nome ``avant-worker``."""
