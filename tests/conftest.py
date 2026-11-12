@@ -101,7 +101,10 @@ def engine() -> Iterator[Engine]:
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
     engine_settings = Settings(
-        database_url=APP_URL, redis_url="redis://r", resend_api_key="re_teste"
+        database_url=APP_URL,
+        redis_url="redis://r",
+        mail_transport="resend",
+        resend_api_key="re_teste",
     ).engine_settings()
     eng = new_engine(APP_URL, engine_settings)
     yield eng
@@ -117,6 +120,7 @@ def services(engine: Engine) -> Iterator[Services]:
         settings=Settings(
             database_url=APP_URL or "",
             redis_url=REDIS_URL,
+            mail_transport="resend",
             resend_api_key="re_teste",
         ),
         engine=engine,
