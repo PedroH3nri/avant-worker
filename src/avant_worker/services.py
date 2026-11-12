@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Protocol
 
 import redis
+from avant_core.db.engine import new_engine, reset_pool_after_fork
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
 from avant_core.gam.client.models import Gam
@@ -24,7 +25,7 @@ from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
 from avant_core.ports import Mailer
 from avant_core.shared.clock import Clock, SystemClock
 from avant_core.site_checklists.interfaces import PageFetcher
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 
 from avant_worker.adapters.exchange_rates import OpenExchangeRates
 from avant_worker.adapters.gam_client import RestGamClient
@@ -125,9 +126,7 @@ class Services:
     @classmethod
     def build(cls, settings: Settings) -> "Services":
         """Monta banco, Redis e email a partir das configurações."""
-        engine = create_engine(
-            settings.database_url, pool_size=settings.db_pool_size, pool_pre_ping=True
-        )
+        engine = new_engine(settings.database_url, settings.engine_settings())
         return cls(
             settings=settings,
             engine=engine,
@@ -274,6 +273,15 @@ def get_services() -> Services:
     if _current is None or _current[0] != os.getpid():
         _current = (os.getpid(), Services.build(Settings()))
     return _current[1]
+
+
+def reset_after_fork() -> None:
+    """No processo filho: troca o pool herdado do pai por um novo, sem fechar as conexões dele,
+    e deixa os serviços serem montados de novo neste processo."""
+    global _current
+    if _current is not None:
+        reset_pool_after_fork(_current[1].engine)
+    _current = None
 
 
 def use_services(services: Services | None) -> None:

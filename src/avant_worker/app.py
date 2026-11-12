@@ -9,13 +9,16 @@ que tem cota própria). A fila sai do nome da tarefa: ``avant.<fila>.<nome>``.
 
 import logging
 import os
-from typing import Any
+from typing import Any, NoReturn
 
+from avant_core.db.app_role import UnsafeDatabaseRole, ensure_app_role_is_restricted
+from avant_core.db.engine import new_engine
 from celery import Celery, signals
 from celery.schedules import crontab
 from pydantic import ValidationError
 
 from avant_worker.logs import configure_logging
+from avant_worker.services import reset_after_fork
 from avant_worker.settings import BrokerSettings, Settings
 
 QUEUES = ("default", "mail", "gam")
@@ -206,15 +209,45 @@ app = create_app()
 
 @signals.worker_init.connect
 def _check_on_start(**_: Any) -> None:
-    """Na subida do worker: sem uma variável obrigatória, ele não sobe."""
-    check_settings()
+    """Na subida do worker: sem uma variável obrigatória ou com papel do banco que ignora o RLS,
+    ele não sobe."""
+    check_database_role(check_settings())
 
 
-def check_settings() -> None:
+@signals.worker_process_init.connect
+def _reset_after_fork(**_: Any) -> None:
+    """Em cada processo filho do prefork: pool novo, sem dividir conexão com o pai."""
+    reset_after_fork()
+
+
+def check_database_role(settings: Settings) -> None:
+    """Recusa a subida se o papel do banco ignora o RLS ou se o banco não responde; levanta
+    ``SystemExit`` sem a URL do banco, que tem a senha."""
+    try:
+        engine = new_engine(settings.database_url, settings.engine_settings())
+    except ValueError as exc:
+        _refuse_start(str(exc))
+    try:
+        ensure_app_role_is_restricted(engine)
+    except UnsafeDatabaseRole as exc:
+        _refuse_start(str(exc))
+    except Exception as exc:
+        _refuse_start(f"não foi possível conferir o papel do banco ({type(exc).__name__})")
+    finally:
+        engine.dispose()
+
+
+def _refuse_start(reason: str) -> NoReturn:
+    """Registra o motivo e encerra a subida do worker."""
+    logging.getLogger("avant.worker").critical("worker não sobe", extra={"reason": reason})
+    raise SystemExit(f"worker não sobe: {reason}")
+
+
+def check_settings() -> Settings:
     """Confere a configuração do worker; levanta ``SystemExit`` com os nomes do que falta ou
     está errado, sem os valores (o erro do pydantic traz as outras variáveis, com segredos)."""
     try:
-        Settings()
+        return Settings()
     except ValidationError as exc:
         names = sorted({str(error["loc"][0]).upper() for error in exc.errors() if error["loc"]})
         logging.getLogger("avant.worker").critical(
