@@ -126,33 +126,41 @@ def sync_price_rule_hours(company_id: str, network_id: str) -> int:
     time_limit=HARD_LIMIT_SECONDS,
 )
 def run_price_rules() -> int:
-    """De hora em hora: o motor em cada site com regra ligada; um site que falha não para os
-    outros. Devolve quantos hashes mudaram de floor."""
+    """De hora em hora: o motor e a Cascata em cada site com regra ligada; uma falha num site,
+    ou num dos dois motores, não para o resto. Devolve quantos hashes mudaram de floor."""
     services = get_services()
     changed = 0
     with services.lock("price-rules", timeout=LOCK_SECONDS) as locked:
         if not locked:
             return 0
         for site_id in active_price_rule_sites(services.trusted_uow()):
-            try:
-                hashes = run_site_price_rules(
-                    services.trusted_uow(), site_id=site_id, clock=services.clock
-                )
-            except Exception:
-                log.exception("motor das regras de preço falhou", extra={"site_id": str(site_id)})
-                continue
-            _forget_floors(services, site_id, hashes)
-            changed += len(hashes)
-            try:
-                start_changed = run_site_cascades(
-                    services.trusted_uow(), site_id=site_id, clock=services.clock
-                )
-            except Exception:
-                log.exception("motor da Cascata falhou", extra={"site_id": str(site_id)})
-                continue
-            if start_changed:
-                _forget_cascades(services, site_id)
+            changed += _run_site_automatic(services, site_id)
+            _run_site_cascade(services, site_id)
     return changed
+
+
+def _run_site_automatic(services: Services, site_id: uuid.UUID) -> int:
+    """Roda a Automática do site e apaga os floors que mudaram; na falha, registra e devolve 0."""
+    try:
+        hashes = run_site_price_rules(services.trusted_uow(), site_id=site_id, clock=services.clock)
+    except Exception:
+        log.exception("motor das regras de preço falhou", extra={"site_id": str(site_id)})
+        return 0
+    _forget_floors(services, site_id, hashes)
+    return len(hashes)
+
+
+def _run_site_cascade(services: Services, site_id: uuid.UUID) -> None:
+    """Roda a Cascata do site e apaga a escada se um floor inicial mudou; a falha é registrada."""
+    try:
+        start_changed = run_site_cascades(
+            services.trusted_uow(), site_id=site_id, clock=services.clock
+        )
+    except Exception:
+        log.exception("motor da Cascata falhou", extra={"site_id": str(site_id)})
+        return
+    if start_changed:
+        _forget_cascades(services, site_id)
 
 
 @app.task(
@@ -227,10 +235,14 @@ def _record_time_zone(services: Services, network: Network, time_zone: str) -> N
         return
     try:
         record_network_time_zone(services.trusted_uow(), network_id=network.id, time_zone=time_zone)
-    except Exception:
+    except Exception as error:
         log.warning(
             "fuso da network não gravado",
-            extra={"network_id": str(network.id), "time_zone": time_zone},
+            extra={
+                "network_id": str(network.id),
+                "time_zone": time_zone,
+                "error": type(error).__name__,
+            },
         )
 
 
