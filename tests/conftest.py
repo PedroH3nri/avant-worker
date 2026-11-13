@@ -125,7 +125,7 @@ def services(engine: Engine) -> Iterator[Services]:
         ),
         engine=engine,
         clock=SystemClock(),
-        mailer=LogMailer(base_url="", show_links=False),
+        mailer=LogMailer(),
         redis=r,
         gam_override=Gam(FakeGamClient(), GROONE_NETWORK),
         reports_override=FakeReports(),
