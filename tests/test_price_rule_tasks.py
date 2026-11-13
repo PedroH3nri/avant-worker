@@ -18,7 +18,7 @@ from avant_core.price_rules.services import run_site_price_rules
 from avant_core.shared.errors import NotFound
 
 from avant_worker.adapters import ReportKind, parse_report, report_query
-from avant_worker.adapters.gam_writer import GamTargetNetworkWithTimeZone
+from avant_worker.adapters.gam_writer import GamTargetNetworkWithTimeZone, SoapGamWriter
 from avant_worker.app import _route, app
 from avant_worker.services import Services
 from avant_worker.tasks.price_rules import (
@@ -280,6 +280,24 @@ def test_run_price_rules_forgets_and_counts_hashes_when_a_cascade_fails(
     assert fake_redis.deleted == [FLOOR_CACHE_KEY.format(site_id=site.id, content_hash=HASH)]
 
 
+def test_run_price_rules_runs_the_cascade_when_the_site_rules_fail(
+    services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = company(services)
+    site = enabled_site(services, client, network(services, client))
+    fake_redis = FakeRedis()
+    services.redis = fake_redis  # type: ignore[assignment]
+
+    def explode(*_args: Any, **_kwargs: Any) -> list[str]:
+        """A Automática falha."""
+        raise RuntimeError("falhou")
+
+    monkeypatch.setattr(price_rule_tasks, "run_site_price_rules", explode)
+    monkeypatch.setattr(price_rule_tasks, "run_site_cascades", lambda *_a, **_k: True)
+    assert run_price_rules.delay().get() == 0
+    assert fake_redis.deleted == [CASCADE_CACHE_KEY.format(site_id=site.id)]
+
+
 def test_create_price_rules_creates_cascades_too(
     services: Services, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -343,7 +361,8 @@ def test_sync_with_invalid_time_zone_logs_and_still_stores_hours(
         assert schedule_price_rule_hours.delay().get() == 1
     assert count(services, "metrics.gam_key_value_hourly") == 4
     assert network_time_zone(services, net.id, client.id) is None
-    assert any("fuso" in record.getMessage() for record in caplog.records)
+    warned = [record for record in caplog.records if "fuso" in record.getMessage()]
+    assert warned and warned[0].__dict__["error"] == "InvalidInput"
 
 
 def test_sync_asks_gam_once_for_currency_and_time_zone(services: Services) -> None:
@@ -393,8 +412,6 @@ def test_sync_does_not_ask_gam_again_when_the_time_zone_is_empty(services: Servi
 
 
 def test_target_network_reads_a_missing_time_zone_as_empty() -> None:
-    from avant_worker.adapters.gam_writer import SoapGamWriter
-
     writer = SoapGamWriter("chave.json")
     writer._call = lambda *_a: {"currencyCode": "BRL", "effectiveRootAdUnitId": "9"}  # type: ignore[method-assign]
     target = writer.target_network("123")
