@@ -38,6 +38,16 @@ OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "metrics.facebook_insights_daily",
+    "metrics.facebook_adset_country_daily",
+    "facebook_alert_reads",
+    "facebook_alerts",
+    "facebook_alert_settings",
+    "facebook_changes",
+    "facebook_objects",
+    "facebook_user_limits",
+    "facebook_ad_accounts",
+    "facebook_profiles",
     "gam_key_values",
     "gam_tool_runs",
     "daily_commissions",
