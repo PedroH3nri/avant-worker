@@ -16,6 +16,7 @@ import logging
 import uuid
 from typing import Any
 
+from avant_core.facebook.enums import FacebookJobKind, FacebookJobState
 from avant_core.facebook.errors import FacebookUnavailable
 from avant_core.facebook.models import FacebookJob
 from avant_core.facebook.services import (
@@ -213,8 +214,19 @@ def run_job(company_id: str, job_id: str) -> str:
         )
     if job is None:
         return "skipped"
+    if job.kind is FacebookJobKind.DUPLICATE and job.state is FacebookJobState.DONE:
+        _sync_copy(company_uuid, job.account_id)
     log.info(
         "job do facebook terminado",
         extra={"job_id": job_id, "state": job.state.value, "error": job.error_code},
     )
     return job.state.value
+
+
+def _sync_copy(company_id: uuid.UUID, account_id: uuid.UUID) -> None:
+    """Pede a sincronia do perfil da conta, que traz a cópia criada pelo ``/copies``."""
+    with get_services().uow(company_id) as uow:
+        account = uow.facebook_accounts.get(account_id)
+        profile_id = account.profile_id if account else None
+    if profile_id is not None:
+        sync_profile.delay(str(company_id), str(profile_id))

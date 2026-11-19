@@ -353,7 +353,9 @@ def test_run_job_duplicates_once_and_tells_the_screen(
         )
         uow.facebook_jobs.add(job)
         uow.commit()
+    calls_before = facebook.calls["ad_accounts"]
     assert run_job.delay(str(company_id), str(job.id)).get() == "done"
+    assert facebook.calls["ad_accounts"] == calls_before + 1
     assert run_job.delay(str(company_id), str(job.id)).get() == "skipped"
     assert facebook.calls["copy"] == 1
     with services.uow(company_id) as uow:
