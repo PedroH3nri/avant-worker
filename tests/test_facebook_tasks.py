@@ -7,13 +7,25 @@ from datetime import date, datetime
 from typing import Any
 
 import pytest
-from avant_core.facebook.enums import FacebookAccountState, FacebookLevel, FacebookOnLimit
+from avant_core.facebook.enums import (
+    FacebookAccountState,
+    FacebookJobKind,
+    FacebookJobState,
+    FacebookLevel,
+    FacebookListKind,
+    FacebookOnLimit,
+)
 from avant_core.facebook.errors import FacebookUnavailable
 from avant_core.facebook.models import (
     FacebookAccountData,
     FacebookCountryRow,
+    FacebookDraft,
+    FacebookDraftAd,
+    FacebookDraftAdset,
     FacebookInsightRow,
+    FacebookJob,
     FacebookObjectData,
+    FacebookOption,
     FacebookProfile,
     FacebookToken,
 )
@@ -27,6 +39,7 @@ from avant_worker.services import FacebookNotConfigured, Services
 from avant_worker.tasks.facebook import (
     check_tokens,
     email_alerts,
+    run_job,
     run_rules,
     schedule_insights,
     schedule_rules,
@@ -116,8 +129,74 @@ class FakeFacebook:
         """Não usado neste teste."""
 
     def copy(self, token: str, external_id: str, level: FacebookLevel, *, paused: bool) -> str:
-        """Não usado neste teste."""
+        """Guarda a cópia e devolve o id novo."""
+        self.calls["copy"] += 1
         return f"{external_id}-copia"
+
+    def options(
+        self, token: str, account_external_id: str, kind: FacebookListKind, query: str
+    ) -> list[FacebookOption]:
+        """Não usado pelo worker."""
+        return []
+
+    def upload_image(
+        self, token: str, account_external_id: str, filename: str, content: bytes
+    ) -> str:
+        """Não usado pelo worker."""
+        return "hash-1"
+
+    def upload_video(
+        self, token: str, account_external_id: str, filename: str, content: bytes
+    ) -> str:
+        """Não usado pelo worker."""
+        return "video-1"
+
+    def create_campaign(
+        self, token: str, account_external_id: str, currency: str, draft: FacebookDraft
+    ) -> str:
+        """Não usado neste teste."""
+        return "campaign-1"
+
+    def create_adset(
+        self,
+        token: str,
+        account_external_id: str,
+        currency: str,
+        draft: FacebookDraft,
+        adset: FacebookDraftAdset,
+        campaign_id: str,
+    ) -> str:
+        """Não usado neste teste."""
+        return "adset-1"
+
+    def create_creative(
+        self, token: str, account_external_id: str, ad: FacebookDraftAd, link: str
+    ) -> str:
+        """Não usado neste teste."""
+        return "creative-1"
+
+    def create_ad(
+        self, token: str, account_external_id: str, name: str, adset_id: str, creative_id: str
+    ) -> str:
+        """Não usado neste teste."""
+        return "ad-1"
+
+    def update_object(
+        self,
+        token: str,
+        external_id: str,
+        currency: str,
+        *,
+        name: str | None,
+        spend_cap_micros: int | None,
+    ) -> None:
+        """Não usado neste teste."""
+
+    def update_adset(self, token: str, external_id: str, adset: FacebookDraftAdset) -> None:
+        """Não usado neste teste."""
+
+    def set_creative(self, token: str, ad_external_id: str, creative_id: str) -> None:
+        """Não usado neste teste."""
 
 
 @pytest.fixture
@@ -246,3 +325,41 @@ def test_insights_enforce_the_monthly_limit_and_alerts_go_by_email(
 def test_rules_run_without_rules(services: Services, facebook: FakeFacebook) -> None:
     _profile(services)
     assert schedule_rules.delay().get() == 0
+
+
+def test_run_job_duplicates_once_and_tells_the_screen(
+    services: Services, facebook: FakeFacebook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    published: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "avant_worker.tasks.facebook.facebook_tasks.publish",
+        lambda client, company, kind, data: published.append((kind, data)),
+    )
+    company_id, profile = _profile(services)
+    sync_profile.delay(str(company_id), str(profile.id)).get()
+    now = services.clock.now()
+    with services.uow(company_id) as uow:
+        account = uow.facebook_accounts.list_for_profile(profile.id)[0]
+        job = FacebookJob(
+            company_id=company_id,
+            account_id=account.id,
+            kind=FacebookJobKind.DUPLICATE,
+            state=FacebookJobState.QUEUED,
+            payload={"level": "campaign"},
+            created_at=now,
+            updated_at=now,
+            created_by=profile.user_id,
+            target_external_id="c1",
+        )
+        uow.facebook_jobs.add(job)
+        uow.commit()
+    calls_before = facebook.calls["ad_accounts"]
+    assert run_job.delay(str(company_id), str(job.id)).get() == "done"
+    assert facebook.calls["ad_accounts"] == calls_before + 1
+    assert run_job.delay(str(company_id), str(job.id)).get() == "skipped"
+    assert facebook.calls["copy"] == 1
+    with services.uow(company_id) as uow:
+        finished = uow.facebook_jobs.get(job.id)
+        assert finished is not None and finished.created == {"copy": "c1-copia"}
+    expected = ("facebook.job.updated", {"job_id": str(job.id)})
+    assert published and all(event == expected for event in published)
