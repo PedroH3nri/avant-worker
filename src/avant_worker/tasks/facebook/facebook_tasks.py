@@ -7,6 +7,9 @@ minutos; token inválido não é erro da tarefa: o core marca o perfil e avisa q
 
 F2: depois de cada sincronia de números, a conta passa pelos limites de gasto; as regras
 automáticas rodam uma vez por dia; os avisos saem por e-mail a cada 10 minutos.
+
+F3: a api grava o job de criar, editar ou duplicar e manda ``run_job``; o core faz as chamadas
+passo a passo e cada passo vira o evento ``facebook.job.updated`` para a tela acompanhar.
 """
 
 import logging
@@ -14,10 +17,12 @@ import uuid
 from typing import Any
 
 from avant_core.facebook.errors import FacebookUnavailable
+from avant_core.facebook.models import FacebookJob
 from avant_core.facebook.services import (
     check_facebook_tokens,
     email_facebook_alerts,
     enforce_facebook_limits,
+    execute_facebook_job,
     facebook_accounts_to_sync,
     facebook_profiles_to_sync,
     facebook_rule_accounts,
@@ -26,6 +31,7 @@ from avant_core.facebook.services import (
     sync_facebook_profile,
 )
 
+from avant_worker.adapters.events import FACEBOOK_JOB_UPDATED, publish
 from avant_worker.app import app
 from avant_worker.services import get_services
 
@@ -182,3 +188,33 @@ def email_alerts() -> int:
         return email_facebook_alerts(
             services.trusted_uow(), mailer=services.mailer, clock=services.clock
         )
+
+
+@app.task(name="avant.facebook.run_job", soft_time_limit=12 * 60, time_limit=14 * 60)
+def run_job(company_id: str, job_id: str) -> str:
+    """Cria, edita ou duplica no Facebook pelo job; rodar de novo continua de onde parou."""
+    services = get_services()
+    company_uuid = uuid.UUID(company_id)
+
+    def notify(job: FacebookJob) -> None:
+        """Avisa a tela aberta que o job andou um passo."""
+        publish(services.redis, company_uuid, FACEBOOK_JOB_UPDATED, {"job_id": str(job.id)})
+
+    with services.lock(f"facebook:job:{job_id}", timeout=LOCK_SECONDS) as locked:
+        if not locked:
+            return "locked"
+        job = execute_facebook_job(
+            services.uow(company_uuid),
+            gateway=services.facebook,
+            box=services.facebook_box,
+            job_id=uuid.UUID(job_id),
+            clock=services.clock,
+            notify=notify,
+        )
+    if job is None:
+        return "skipped"
+    log.info(
+        "job do facebook terminado",
+        extra={"job_id": job_id, "state": job.state.value, "error": job.error_code},
+    )
+    return job.state.value

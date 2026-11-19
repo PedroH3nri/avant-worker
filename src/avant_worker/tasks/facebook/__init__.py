@@ -1,9 +1,11 @@
-"""Tarefas da integração com o Facebook: estrutura, números, tokens, limites, regras e avisos."""
+"""Tarefas da integração com o Facebook: estrutura, números, tokens, limites, regras, avisos e
+criação."""
 
 from avant_worker.tasks.facebook.facebook_tasks import (
     LATE_DAYS,
     check_tokens,
     email_alerts,
+    run_job,
     run_rules,
     schedule_insights,
     schedule_rules,
@@ -16,6 +18,7 @@ __all__ = [
     "LATE_DAYS",
     "check_tokens",
     "email_alerts",
+    "run_job",
     "run_rules",
     "schedule_insights",
     "schedule_rules",
