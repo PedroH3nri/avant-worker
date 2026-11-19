@@ -17,12 +17,15 @@ import redis
 from avant_core.db.engine import new_engine, reset_pool_after_fork
 from avant_core.db.mapping import map_entities
 from avant_core.db.uow import SqlAlchemyUnitOfWork
+from avant_core.facebook.adapters import GraphFacebookGateway
+from avant_core.facebook.interfaces import FacebookGateway
 from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
+from avant_core.identity.security.crypto import FernetSecretBox
 from avant_core.mail import build_mailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
-from avant_core.ports import Mailer
+from avant_core.ports import Mailer, SecretBox
 from avant_core.shared.clock import Clock, SystemClock
 from avant_core.site_checklists.interfaces import PageFetcher
 from sqlalchemy import Engine
@@ -91,6 +94,10 @@ class CountryLookup(Protocol):
         ...
 
 
+class FacebookNotConfigured(RuntimeError):
+    """Tarefa da fila facebook num worker sem o app da Meta ou sem a chave dos tokens."""
+
+
 class GamNotConfigured(RuntimeError):
     """Tarefa da fila gam num worker sem a chave da conta de serviço."""
 
@@ -111,6 +118,8 @@ class Services:
     page_fetcher_override: "PageFetcher | None" = None
     gam_writer_override: "GamWriter | None" = None
     countries_override: "CountryLookup | None" = None
+    facebook_override: "FacebookGateway | None" = None
+    facebook_box_override: "SecretBox | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -123,6 +132,8 @@ class Services:
         self._page_fetcher: PageFetcher | None = self.page_fetcher_override
         self._gam_writer: GamWriter | None = self.gam_writer_override
         self._countries: CountryLookup | None = self.countries_override
+        self._facebook: FacebookGateway | None = self.facebook_override
+        self._facebook_box: SecretBox | None = self.facebook_box_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -206,6 +217,29 @@ class Services:
                 self.settings.page_views_mongo_url, self.settings.page_views_mongo_database
             )
         return self._page_views
+
+    @property
+    def facebook(self) -> "FacebookGateway":
+        """A Graph API com o app da Meta da Groone; montada na primeira tarefa do Facebook."""
+        if self._facebook is None:
+            settings = self.settings
+            if not (settings.facebook_app_id and settings.facebook_app_secret):
+                raise FacebookNotConfigured("defina FACEBOOK_APP_ID e FACEBOOK_APP_SECRET")
+            self._facebook = GraphFacebookGateway(
+                settings.facebook_app_id,
+                settings.facebook_app_secret,
+                settings.facebook_graph_version,
+            )
+        return self._facebook
+
+    @property
+    def facebook_box(self) -> "SecretBox":
+        """A cifra dos tokens do Facebook, com a chave ``FACEBOOK_TOKEN_KEY``."""
+        if self._facebook_box is None:
+            if not self.settings.facebook_token_key:
+                raise FacebookNotConfigured("defina FACEBOOK_TOKEN_KEY")
+            self._facebook_box = FernetSecretBox(self.settings.facebook_token_key)
+        return self._facebook_box
 
     @property
     def countries(self) -> "CountryLookup | None":

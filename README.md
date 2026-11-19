@@ -30,6 +30,7 @@ src/avant_worker/
 | --- | --- | --- |
 | worker | `celery -A avant_worker.app worker -Q default,mail -l info` | limpeza e e-mails |
 | worker-gam | `celery -A avant_worker.app worker -Q gam -c 2 -l info` | Google Ad Manager; o único com a chave da conta de serviço |
+| worker-facebook | `celery -A avant_worker.app worker -Q facebook -c 2 -l info` | Graph API do Facebook (decisão 16); o único com o segredo do app da Meta e a chave dos tokens |
 | scheduler | `celery -A avant_worker.app beat -l info` | publica as tarefas agendadas; um só por ambiente |
 
 O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
@@ -41,6 +42,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 - `default`: limpeza e o resto.
 - `mail`: e-mails (os avisos dos alertas, os envios agendados e o esqueci a senha, que a API enfileira só com o e-mail; os outros da API saem direto, depois do commit).
 - `gam`: Google Ad Manager, que tem cota própria e não pode travar as outras filas.
+- `facebook`: Graph API do Facebook (decisão 16), também com cota própria.
 
 | Tarefa | Quando | Faz |
 | --- | --- | --- |
@@ -78,6 +80,11 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.mail.deliver_reports(company_id)` | pelo agendador acima | roda o relatório ou o dashboard como cada pessoa da lista e manda o resumo com o CSV anexo; marca o horário antes de mandar, sem repetir |
 | `avant.mail.request_password_reset(email)` | pela API, no esqueci a senha | gera o token e manda o e-mail de nova senha se a conta existir (`trusted_uow`); o token nunca vai para a fila nem para o log, e o e-mail sai mascarado no log e nos eventos do Celery; até 4 retries (30 s a 4 min) só em erro temporário (`MailNotSent` ou falha do banco). Cada tentativa grava um link novo antes de enviar: no pior caso, a pessoa tem até 3 links válidos na mesma hora (o limite de pedidos por hora encerra as tentativas) |
 | `avant.default.flush_reward_events` | a cada minuto | esvazia `avant:reward:buffer` (eventos e contatos que o `reward.js` manda pela api): renomeia a lista para `avant:reward:processing:{lote}`, grava em pedaços de 5.000 com `record_reward_batch` (idempotente pelo lote) e apaga a chave; uma chave de processamento que sobrou é gravada na execução seguinte |
+| `avant.facebook.schedule_structure` | de hora em hora (minuto 25) | uma `avant.facebook.sync_profile` por perfil com token válido (todas as Empresas) |
+| `avant.facebook.sync_profile(company_id, profile_id)` | pelo agendador acima | contas do perfil e campanhas, conjuntos e anúncios mudados desde a última vez (`sync_facebook_profile` do core); grava o que mudou fora do Avant no histórico e os avisos de reprovação; token inválido marca o perfil e avisa quem conectou; até 4 retries (1 a 8 min) em `FacebookUnavailable` |
+| `avant.facebook.schedule_insights(days=1)` | minutos 15 e 45; às 02:30 UTC com `days=3` | uma `avant.facebook.sync_insights` por conta com perfil válido; os 3 dias porque o Facebook ajusta os números |
+| `avant.facebook.sync_insights(company_id, account_id, days)` | pelo agendador acima | números por anúncio e dia e por conjunto, dia e país, gravados com upsert em `metrics.facebook_*`; retries como acima |
+| `avant.facebook.check_tokens` | todo dia às 08:00 UTC | avisa quem conectou um perfil cujo token vence em até 7 dias |
 | `avant.default.purge_reward_batches` | todo dia às 04:25 UTC | apaga os identificadores de lote de reward com mais de 7 dias |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
@@ -122,6 +129,9 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | `GEOLITE2_COUNTRY_FILE` | caminho da base GeoLite2 Country (`.mmdb`, da MaxMind) montada no container; sem ela, o país das visitas da tag fica `unknown` |
 | `PAGE_VIEWS_MONGO_DATABASE` | banco do data no Mongo (padrão `admanager`) |
 | `OPENEXCHANGERATES_APP_ID` | chave do Open Exchange Rates (o plano grátis basta); sem ela, as cotações não sincronizam e o painel só mostra dólar |
+| `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | app da Meta que a Groone já tem; só no worker-facebook (e na API) |
+| `FACEBOOK_TOKEN_KEY` | chave Fernet que cifra os tokens dos perfis; a mesma da API |
+| `FACEBOOK_GRAPH_VERSION` | opcional: versão da Graph API (padrão `v25.0`) |
 | `LOG_LEVEL` | padrão `INFO` |
 
 Os nomes estão no `.env.example` do avant-infra; os valores, só nas VMs.

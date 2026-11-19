@@ -64,6 +64,13 @@ class Settings(BrokerSettings):
     # "unknown" e as visitas são gravadas do mesmo jeito.
     geolite2_country_file: str | None = None
 
+    # Facebook (decisão 16): o app da Meta que a Groone já tem e a chave Fernet dos tokens. Sem
+    # elas, as tarefas da fila facebook falham com FacebookNotConfigured.
+    facebook_app_id: str | None = None
+    facebook_app_secret: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    facebook_token_key: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    facebook_graph_version: str = "v25.0"
+
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
 
