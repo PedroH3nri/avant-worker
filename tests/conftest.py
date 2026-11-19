@@ -38,6 +38,20 @@ OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "metrics.google_ads_campaign_daily",
+    "metrics.google_ads_daily",
+    "metrics.google_ads_keyword_daily",
+    "metrics.google_ads_search_term_daily",
+    "metrics.google_ads_placement_daily",
+    "google_ads_alert_reads",
+    "google_ads_alerts",
+    "google_ads_alert_settings",
+    "google_ads_changes",
+    "google_ads_keywords",
+    "google_ads_objects",
+    "google_ads_user_limits",
+    "google_ads_accounts",
+    "google_ads_logins",
     "metrics.facebook_insights_daily",
     "metrics.facebook_adset_country_daily",
     "facebook_alert_reads",

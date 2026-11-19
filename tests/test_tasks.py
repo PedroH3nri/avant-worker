@@ -21,7 +21,7 @@ def test_queue_comes_from_the_task_name() -> None:
     assert _route("avant.outra.coisa") == {"queue": "default"}
     assert _route("celery.chord_unlock") == {"queue": "default"}
     assert _route("avant.facebook.sync_profile") == {"queue": "facebook"}
-    assert set(QUEUES) == {"default", "mail", "gam", "facebook"}
+    assert set(QUEUES) == {"default", "mail", "gam", "facebook", "google_ads"}
 
 
 def test_beat_schedule_points_at_registered_tasks() -> None:
