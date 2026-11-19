@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any
 
 import pytest
-from avant_core.facebook.enums import FacebookAccountState, FacebookLevel
+from avant_core.facebook.enums import FacebookAccountState, FacebookLevel, FacebookOnLimit
 from avant_core.facebook.errors import FacebookUnavailable
 from avant_core.facebook.models import (
     FacebookAccountData,
@@ -26,7 +26,10 @@ from avant_worker.app import _route, app
 from avant_worker.services import FacebookNotConfigured, Services
 from avant_worker.tasks.facebook import (
     check_tokens,
+    email_alerts,
+    run_rules,
     schedule_insights,
+    schedule_rules,
     schedule_structure,
     sync_insights,
     sync_profile,
@@ -42,6 +45,7 @@ class FakeFacebook:
     def __init__(self) -> None:
         self.unavailable = False
         self.calls: defaultdict[str, int] = defaultdict(int)
+        self.statuses: list[tuple[str, str]] = []
 
     def exchange_code(self, code: str, redirect_uri: str) -> FacebookToken:
         """Não usado pelo worker."""
@@ -96,6 +100,25 @@ class FakeFacebook:
     def revoke(self, token: str) -> None:
         """Não usado pelo worker."""
 
+    def set_status(self, token: str, external_id: str, status: str) -> None:
+        """Guarda a troca de situação feita pelo limite ou pelas regras."""
+        self.statuses.append((external_id, status))
+
+    def set_budget(
+        self,
+        token: str,
+        external_id: str,
+        currency: str,
+        *,
+        daily_budget_micros: int | None,
+        lifetime_budget_micros: int | None,
+    ) -> None:
+        """Não usado neste teste."""
+
+    def copy(self, token: str, external_id: str, level: FacebookLevel, *, paused: bool) -> str:
+        """Não usado neste teste."""
+        return f"{external_id}-copia"
+
 
 @pytest.fixture
 def facebook(services: Services) -> FakeFacebook:
@@ -137,10 +160,13 @@ def test_tasks_go_to_the_facebook_queue_and_retry_on_unavailable() -> None:
         "avant.facebook.schedule_insights",
         "avant.facebook.sync_insights",
         "avant.facebook.check_tokens",
+        "avant.facebook.schedule_rules",
+        "avant.facebook.run_rules",
     ):
         assert name in app.tasks
         assert _route(name) == {"queue": "facebook"}
-    for task in (sync_profile, sync_insights):
+    assert _route("avant.mail.facebook_alerts") == {"queue": "mail"}
+    for task in (sync_profile, sync_insights, run_rules):
         typed: Any = task
         assert typed.autoretry_for == (FacebookUnavailable,) and typed.max_retries == 4
 
@@ -151,6 +177,8 @@ def test_beat_runs_structure_hourly_and_insights_every_thirty_minutes() -> None:
     assert schedule["facebook-insights-today"]["schedule"].minute == {15, 45}
     assert schedule["facebook-insights-late"]["kwargs"] == {"days": 3}
     assert schedule["facebook-tokens"]["task"] == "avant.facebook.check_tokens"
+    assert schedule["facebook-rules"]["schedule"].hour == {9}
+    assert schedule["facebook-alert-mails"]["task"] == "avant.mail.facebook_alerts"
 
 
 def test_structure_then_insights_fill_the_company(
@@ -192,3 +220,29 @@ def test_worker_without_the_meta_app_fails_clearly(services: Services) -> None:
         assert services.facebook
     with pytest.raises(FacebookNotConfigured):
         assert services.facebook_box
+
+
+def test_insights_enforce_the_monthly_limit_and_alerts_go_by_email(
+    services: Services, facebook: FakeFacebook
+) -> None:
+    company_id, profile = _profile(services)
+    sync_profile.delay(str(company_id), str(profile.id)).get()
+    with services.uow(company_id) as uow:
+        account = uow.facebook_accounts.list_for_profile(profile.id)[0]
+        account.monthly_limit_micros = 1_000_000
+        account.on_limit = FacebookOnLimit.PAUSE
+        uow.commit()
+    sync_insights.delay(str(company_id), str(account.id)).get()
+    assert facebook.statuses == [("c1", "PAUSED")]
+    with services.uow(company_id) as uow:
+        campaign = uow.facebook_objects.get_by_external(company_id, "c1")
+        assert campaign is not None and campaign.paused_by_limit_at is not None
+    sync_insights.delay(str(company_id), str(account.id)).get()
+    assert facebook.statuses == [("c1", "PAUSED")]
+    assert email_alerts.delay().get() >= 1
+    assert email_alerts.delay().get() == 0
+
+
+def test_rules_run_without_rules(services: Services, facebook: FakeFacebook) -> None:
+    _profile(services)
+    assert schedule_rules.delay().get() == 0
