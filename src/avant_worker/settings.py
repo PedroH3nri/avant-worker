@@ -71,6 +71,15 @@ class Settings(BrokerSettings):
     facebook_token_key: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
     facebook_graph_version: str = "v25.0"
 
+    # Google Ads (decisão 17): o cliente OAuth e o developer token do Genius e a chave Fernet
+    # dos tokens, a mesma da api. Sem eles, as tarefas da fila google_ads falham com
+    # GoogleAdsNotConfigured.
+    google_ads_client_id: str | None = None
+    google_ads_client_secret: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    google_ads_developer_token: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    google_ads_token_key: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    google_ads_api_version: str = "v23"
+
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
 

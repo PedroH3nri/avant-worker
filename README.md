@@ -31,6 +31,7 @@ src/avant_worker/
 | worker | `celery -A avant_worker.app worker -Q default,mail -l info` | limpeza e e-mails |
 | worker-gam | `celery -A avant_worker.app worker -Q gam -c 2 -l info` | Google Ad Manager; o único com a chave da conta de serviço |
 | worker-facebook | `celery -A avant_worker.app worker -Q facebook -c 2 -l info` | Graph API do Facebook (decisão 16); o único com o segredo do app da Meta e a chave dos tokens |
+| worker-google-ads | `celery -A avant_worker.app worker -Q google_ads -c 2 -l info` | API do Google Ads (decisão 17); o único com o segredo do cliente OAuth, o developer token e a chave dos tokens |
 | scheduler | `celery -A avant_worker.app beat -l info` | publica as tarefas agendadas; um só por ambiente |
 
 O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.
@@ -43,6 +44,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 - `mail`: e-mails (os avisos dos alertas, os envios agendados e o esqueci a senha, que a API enfileira só com o e-mail; os outros da API saem direto, depois do commit).
 - `gam`: Google Ad Manager, que tem cota própria e não pode travar as outras filas.
 - `facebook`: Graph API do Facebook (decisão 16), também com cota própria.
+- `google_ads`: API do Google Ads (decisão 17), com a cota do developer token.
 
 | Tarefa | Quando | Faz |
 | --- | --- | --- |
@@ -85,6 +87,11 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.facebook.schedule_insights(days=1)` | minutos 15 e 45; às 02:30 UTC com `days=3` | uma `avant.facebook.sync_insights` por conta com perfil válido; os 3 dias porque o Facebook ajusta os números |
 | `avant.facebook.sync_insights(company_id, account_id, days)` | pelo agendador acima | números por anúncio e dia e por conjunto, dia e país, gravados com upsert em `metrics.facebook_*`; retries como acima |
 | `avant.facebook.check_tokens` | todo dia às 08:00 UTC | avisa quem conectou um perfil cujo token vence em até 7 dias |
+| `avant.google_ads.schedule_structure` | de hora em hora (minuto 35) | uma `avant.google_ads.sync_login` por login com token válido (todas as Empresas) |
+| `avant.google_ads.sync_login(company_id, login_id)` | pelo agendador acima | contas do login (as novas da MCC também; as que ele deixou de ver ficam sem login) e campanhas, grupos, anúncios e palavras-chave de cada conta ativa (`sync_google_ads_login` do core); avisos de conta suspensa, sufixo trocado e anúncio reprovado; token revogado marca o login e avisa quem conectou; até 4 retries (1 a 8 min) em `GoogleAdsUnavailable` |
+| `avant.google_ads.schedule_metrics(days=1, with_terms=False)` | minutos 5 e 35; às 02:40 UTC com `days=3` e `with_terms=True` | uma `avant.google_ads.sync_metrics` por conta ativa com login válido |
+| `avant.google_ads.sync_metrics(company_id, account_id, days, with_terms)` | pelo agendador acima | números por campanha (inclui Performance Max), anúncio e palavra-chave e, com `with_terms`, por termo de pesquisa e posicionamento, gravados com upsert em `metrics.google_ads_*`; retries como acima |
+| `avant.google_ads.schedule_changes` e `sync_changes(company_id, account_id)` | de hora em hora (minuto 37) | o `change_event` da conta desde a última vez (até 29 dias), no histórico; a primeira rodada só marca o ponto de partida |
 | `avant.default.purge_reward_batches` | todo dia às 04:25 UTC | apaga os identificadores de lote de reward com mais de 7 dias |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
@@ -132,6 +139,9 @@ A API enfileira `avant.gam.sync_network` pelo nome (`send_task`), sem importar e
 | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | app da Meta que a Groone já tem; só no worker-facebook (e na API) |
 | `FACEBOOK_TOKEN_KEY` | chave Fernet que cifra os tokens dos perfis; a mesma da API |
 | `FACEBOOK_GRAPH_VERSION` | opcional: versão da Graph API (padrão `v25.0`) |
+| `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_DEVELOPER_TOKEN` | cliente OAuth e developer token do Genius; só no worker-google-ads (e na API) |
+| `GOOGLE_ADS_TOKEN_KEY` | chave Fernet que cifra os tokens dos logins do Google; a mesma da API |
+| `GOOGLE_ADS_API_VERSION` | opcional: versão da API REST do Google Ads (padrão `v23`) |
 | `LOG_LEVEL` | padrão `INFO` |
 
 Os nomes estão no `.env.example` do avant-infra; os valores, só nas VMs.

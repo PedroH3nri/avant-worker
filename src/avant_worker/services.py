@@ -21,6 +21,8 @@ from avant_core.facebook.adapters import GraphFacebookGateway
 from avant_core.facebook.interfaces import FacebookGateway
 from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
+from avant_core.google_ads.adapters import RestGoogleAdsGateway
+from avant_core.google_ads.interfaces import GoogleAdsGateway
 from avant_core.identity.security.crypto import FernetSecretBox
 from avant_core.mail import build_mailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
@@ -98,6 +100,11 @@ class FacebookNotConfigured(RuntimeError):
     """Tarefa da fila facebook num worker sem o app da Meta ou sem a chave dos tokens."""
 
 
+class GoogleAdsNotConfigured(RuntimeError):
+    """Tarefa da fila google_ads num worker sem o cliente do Google, o developer token ou a
+    chave dos tokens."""
+
+
 class GamNotConfigured(RuntimeError):
     """Tarefa da fila gam num worker sem a chave da conta de serviço."""
 
@@ -120,6 +127,8 @@ class Services:
     countries_override: "CountryLookup | None" = None
     facebook_override: "FacebookGateway | None" = None
     facebook_box_override: "SecretBox | None" = None
+    google_ads_override: "GoogleAdsGateway | None" = None
+    google_ads_box_override: "SecretBox | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -134,6 +143,8 @@ class Services:
         self._countries: CountryLookup | None = self.countries_override
         self._facebook: FacebookGateway | None = self.facebook_override
         self._facebook_box: SecretBox | None = self.facebook_box_override
+        self._google_ads: GoogleAdsGateway | None = self.google_ads_override
+        self._google_ads_box: SecretBox | None = self.google_ads_box_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -240,6 +251,38 @@ class Services:
                 raise FacebookNotConfigured("defina FACEBOOK_TOKEN_KEY")
             self._facebook_box = FernetSecretBox(self.settings.facebook_token_key)
         return self._facebook_box
+
+    @property
+    def google_ads(self) -> "GoogleAdsGateway":
+        """A API REST do Google Ads com o cliente OAuth e o developer token; montada na primeira
+        tarefa do Google Ads."""
+        if self._google_ads is None:
+            settings = self.settings
+            if not (
+                settings.google_ads_client_id
+                and settings.google_ads_client_secret
+                and settings.google_ads_developer_token
+            ):
+                raise GoogleAdsNotConfigured(
+                    "defina GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET e"
+                    " GOOGLE_ADS_DEVELOPER_TOKEN"
+                )
+            self._google_ads = RestGoogleAdsGateway(
+                settings.google_ads_client_id,
+                settings.google_ads_client_secret,
+                settings.google_ads_developer_token,
+                settings.google_ads_api_version,
+            )
+        return self._google_ads
+
+    @property
+    def google_ads_box(self) -> "SecretBox":
+        """A cifra dos tokens do Google Ads, com a chave ``GOOGLE_ADS_TOKEN_KEY``."""
+        if self._google_ads_box is None:
+            if not self.settings.google_ads_token_key:
+                raise GoogleAdsNotConfigured("defina GOOGLE_ADS_TOKEN_KEY")
+            self._google_ads_box = FernetSecretBox(self.settings.google_ads_token_key)
+        return self._google_ads_box
 
     @property
     def countries(self) -> "CountryLookup | None":

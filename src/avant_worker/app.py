@@ -1,11 +1,12 @@
 """Aplicação Celery. Rodar com:
 
-celery -A avant_worker.app worker -Q default,mail,gam,facebook -l info
+celery -A avant_worker.app worker -Q default,mail,gam,facebook,google_ads -l info
 celery -A avant_worker.app beat -l info
 
 Filas: ``default`` (limpeza e o resto), ``mail`` (e-mails), ``gam`` (Google Ad Manager,
-que tem cota própria) e ``facebook`` (Graph API, também com cota própria). A fila sai do nome
-da tarefa: ``avant.<fila>.<nome>``.
+que tem cota própria), ``facebook`` (Graph API, também com cota própria) e ``google_ads`` (API
+do Google Ads, com a cota do developer token). A fila sai do nome da tarefa:
+``avant.<fila>.<nome>``.
 """
 
 import logging
@@ -22,7 +23,7 @@ from avant_worker.logs import configure_logging
 from avant_worker.services import _mailer, reset_after_fork
 from avant_worker.settings import BrokerSettings, InvalidVariable, Settings
 
-QUEUES = ("default", "mail", "gam", "facebook")
+QUEUES = ("default", "mail", "gam", "facebook", "google_ads")
 
 
 def _route(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -56,6 +57,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.ad_tags.ad_tag_tasks",
             "avant_worker.tasks.price_rules.price_rule_tasks",
             "avant_worker.tasks.facebook.facebook_tasks",
+            "avant_worker.tasks.google_ads.google_ads_tasks",
         ],
     )
     app.conf.update(
@@ -221,6 +223,23 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "facebook-tokens": {
                 "task": "avant.facebook.check_tokens",
                 "schedule": crontab(hour=8, minute=0),
+            },
+            "google-ads-structure": {
+                "task": "avant.google_ads.schedule_structure",
+                "schedule": crontab(minute=35),
+            },
+            "google-ads-metrics-today": {
+                "task": "avant.google_ads.schedule_metrics",
+                "schedule": crontab(minute="5,35"),
+            },
+            "google-ads-metrics-late": {
+                "task": "avant.google_ads.schedule_metrics",
+                "schedule": crontab(hour=2, minute=40),
+                "kwargs": {"days": 3, "with_terms": True},
+            },
+            "google-ads-changes": {
+                "task": "avant.google_ads.schedule_changes",
+                "schedule": crontab(minute=37),
             },
             "reward-batches-purge": {
                 "task": "avant.default.purge_reward_batches",
