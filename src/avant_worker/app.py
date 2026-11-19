@@ -210,6 +210,14 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "schedule": crontab(hour=2, minute=30),
                 "kwargs": {"days": 3},
             },
+            "facebook-rules": {
+                "task": "avant.facebook.schedule_rules",
+                "schedule": crontab(hour=9, minute=0),
+            },
+            "facebook-alert-mails": {
+                "task": "avant.mail.facebook_alerts",
+                "schedule": crontab(minute="*/10"),
+            },
             "facebook-tokens": {
                 "task": "avant.facebook.check_tokens",
                 "schedule": crontab(hour=8, minute=0),
