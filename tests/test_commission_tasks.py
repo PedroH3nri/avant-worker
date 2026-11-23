@@ -74,6 +74,9 @@ def seller_scenario(services: Services, revenue_day_offset: int = 0) -> tuple[Co
         uow.client_profiles.add(
             ClientProfile(client.id, "Dono", "Açaí", "dono@acai.com", account_manager_id=seller.id)
         )
+        stored = uow.companies.get(client.id)
+        assert stored is not None
+        stored.client_id = client.id
         uow.contracts.add(
             Contract(client.id, n.id, Decimal("50"), datetime(2026, 1, 1, tzinfo=UTC))
         )
