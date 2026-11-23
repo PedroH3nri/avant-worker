@@ -1,7 +1,7 @@
-# Graph Report - avant-worker  (2026-11-19)
+# Graph Report - avant-worker  (2026-11-23)
 
 ## Corpus Check
-- 95 files · ~58,254 words
+- 95 files · ~58,746 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 8 file(s) not represented in the graph (top: (none) 6, .toml 1, .lock 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0960f08f`
+- Built from commit: `e71013c3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -416,7 +416,7 @@ Nodes (4): redis_services(), _reward(), test_buffer_becomes_metrics_and_leads(),
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Services` connect `Services` to `SoapGamWriter`, `test_price_rule_tasks.py`, `tool_tasks.py`, `Settings`, `OpenExchangeRates`, `get_services`, `test_earnings_tasks.py`, `gam_metrics_tasks.py`, `services`, `test_commission_tasks.py`, `test_mail_tasks.py`, `test_exchange_rates_tasks.py`, `test_facebook_tasks.py`, `network_tasks.py`, `price_rule_tasks.py`, `company`, `test_ad_tag_tasks.py`, `test_gam_tool_tasks.py`, `key_value_tasks.py`, `HttpPageFetcher`, `uuid`, `ad_tag_tasks.py`, `services.py`, `reward_tasks.py`, `test_key_value_tasks.py`, `test_database_pool.py`, `test_google_ads_tasks.py`, `collections_abc`, `RestGamClient`, `test_the_smtp_mailer_failing_for_now_makes_the_task_try_again`, `dripping_server`, `use_services`, `FacebookNotConfigured`, `FakeCountries`, `SoapReportClient`, `sync_price_rule_hours`, `GoogleAdsNotConfigured`, `test_reward_tasks.py`, `google_ads`?**
-  _High betweenness centrality (0.223) - this node is a cross-community bridge._
+  _High betweenness centrality (0.222) - this node is a cross-community bridge._
 - **Are the 138 inferred relationships involving `Services` (e.g. with `OpenExchangeRates` and `RestGamClient`) actually correct?**
   _`Services` has 138 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `avant-worker` to the rest of the system?**
@@ -424,7 +424,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `test_price_rule_tasks.py` be split into smaller, more focused modules?**
   _Cohesion score 0.07003367003367003 - nodes in this community are weakly interconnected._
 - **Why does `get_services()` connect `get_services` to `Services`, `commission_tasks.py`, `tool_tasks.py`, `password_reset_tasks.py`, `Settings`, `test_earnings_tasks.py`, `gam_metrics_tasks.py`, `facebook_tasks.py`, `test_exchange_rates_tasks.py`, `network_tasks.py`, `price_rule_tasks.py`, `key_value_tasks.py`, `uuid`, `ad_tag_tasks.py`, `services.py`, `schedule_tasks.py`, `reward_tasks.py`, `_route`, `Avant: conexão com o GAM`, `checklist_tasks.py`, `purge_tasks.py`, `alert_tasks.py`, `datetime`, `price_rules/__init__.py`, `sync_price_rule_hours`?**
-  _High betweenness centrality (0.076) - this node is a cross-community bridge._
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `company()` (e.g. with `Services` and `.trusted_uow()`) actually correct?**
   _`company()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **Should `steps` be split into smaller, more focused modules?**
