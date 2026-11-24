@@ -53,6 +53,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.alerts.alert_tasks",
             "avant_worker.tasks.schedules.schedule_tasks",
             "avant_worker.tasks.checklists.checklist_tasks",
+            "avant_worker.tasks.install_checks.install_check_tasks",
             "avant_worker.tasks.rewards.reward_tasks",
             "avant_worker.tasks.ad_tags.ad_tag_tasks",
             "avant_worker.tasks.price_rules.price_rule_tasks",
@@ -166,6 +167,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "checklists-open": {
                 "task": "avant.default.open_checklists",
                 "schedule": crontab(hour=3, minute=15),
+            },
+            "install-checks-daily": {
+                "task": "avant.default.daily_install_checks",
+                "schedule": crontab(hour=6, minute=30),
             },
             "commissions-close": {
                 "task": "avant.default.close_commissions",
