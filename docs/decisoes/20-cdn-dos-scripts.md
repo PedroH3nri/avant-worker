@@ -1,6 +1,6 @@
 # 20. CDN dos scripts do site (cdn.groone.com)
 
-Situação: **requisito do deploy de produção** (Pedro, 23/11/2026). Milestone M2 Segurança e
+Situação: **decidido, requisito do deploy de produção** (Pedro, 23/11/2026; confirmado às 23h46). Milestone M2 Segurança e
 produção. Issues: avant-infra#168 (CDN no ar), avant-tag#47 (scripts modulares) e avant-web#400 (linhas de
 instalação). Complementa a decisão 13 (ad tag) e a 12 (rewards).
 
@@ -25,6 +25,12 @@ CDN próprio, sem "avant" no endereço.
     script solto leva junto o `core` de que precisa, para funcionar sozinho.
   - Sem duplicar: se a página tem o `tag.js`, os soltos que ele já cobre desistem (como o
     `reward.js` faz hoje). Dois soltos diferentes rodam juntos.
+- **Build com webpack** (Pedro, 23/11): todos os scripts do site (`tag.js`, `page-views.js`,
+  `loader.js`, `reward.js`) saem do webpack, como os que estão em produção hoje (o
+  `rewards.min.js` do Genius é um pacote do webpack 5 com Babel). O `avant-tag` troca o build do
+  Vite pelo webpack: uma entrada por script, cada uma num arquivo só, minificado e fechado numa
+  função (IIFE), sem pedaços carregados depois, sem hash no nome e com o Babel para os navegadores
+  mais antigos. O Vitest continua para os testes. Fica na issue avant-tag#47.
 - **Instalação:** `<script async src="https://cdn.groone.com/tag.js" data-tag="{chave}"></script>`.
   Os soltos que precisam saber de qual site são (visitas e loader) usam a mesma chave da tag em
   `data-tag`; o `reward.js` continua sem chave. O painel mostra as linhas com o `cdn.groone.com`.
