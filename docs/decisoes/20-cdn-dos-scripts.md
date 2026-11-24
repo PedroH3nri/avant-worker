@@ -49,11 +49,17 @@ CDN próprio, sem "avant" no endereço.
 - Compatibilidade: `avant.groone.com/tag.js` e `/reward.js` continuam respondendo (redirecionando
   para o CDN) enquanto houver site com a linha antiga.
 
-## Em aberto
+## Chamadas da API e nome dos scripts (Pedro, 23/11, 23h52)
 
-- **Onde os scripts chamam a API.** Hoje o `tag.js` monta o endereço da API a partir do endereço
-  do próprio script. Saindo do CDN, ele precisa saber o endereço da API. Proposta: as chamadas
-  também passam pelo `cdn.groone.com` (sem cache para visitas e eventos; configuração da tag com
-  cache curto na borda), para a página do cliente não citar o Avant em lugar nenhum. A outra
-  opção é o script chamar `avant.groone.com/api/tag/*` direto. Pedro decide.
-- Nome do script de visitas: `page-views.js` (proposto) ou `page-views-v2.js`, como no Data.
+- **As chamadas da API também passam pelo `cdn.groone.com`.** O script não cita o Avant em lugar
+  nenhum da página do cliente: baixa de `https://cdn.groone.com/tag.js` e chama
+  `https://cdn.groone.com/api/tag/*` e `/api/reward/*`. Hoje o `tag.js` monta o endereço da API a
+  partir do endereço do próprio script; isso continua valendo, já que os dois ficam no mesmo
+  endereço.
+- No nginx do `cdn.groone.com`, só `/api/tag/` e `/api/reward/` vão para a API; o resto da API, o
+  painel e o `/api/v1` não respondem nesse endereço.
+- Na Cloudflare, as chamadas não ficam em cache (visitas, eventos e leads), exceto a configuração
+  pública da tag (`GET /api/tag/config`), com cache curto na borda. A API precisa ler o IP do
+  visitante do `CF-Connecting-IP` (só quando o pedido vem da Cloudflare) para o país das visitas e
+  o limite de pedidos.
+- **Nome do script de visitas:** `page-views.js`.
