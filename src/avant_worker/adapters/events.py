@@ -22,6 +22,8 @@ GAM_TOOL_RUN_UPDATED = "gam_tool_run.updated"
 
 FACEBOOK_JOB_UPDATED = "facebook.job.updated"
 
+INSTALL_CHECK_UPDATED = "install_check.updated"
+
 
 def channel(company_id: uuid.UUID) -> str:
     """Nome do canal do Redis com os eventos de uma Empresa."""

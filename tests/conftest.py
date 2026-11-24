@@ -93,6 +93,7 @@ TABLES = (
     "price_rules",
     "price_rule_blocks",
     "price_rule_settings",
+    "install_checks",
     "ad_tags",
     "ad_units",
     "sites",
