@@ -65,7 +65,7 @@ Cada repositório tem um `CLAUDE.md` com as regras dele e um README. Leia os doi
 | Milestone | Prazo | Conteúdo |
 |---|---|---|
 | M1 Staging no ar | 06/11 | Deploy nas VMs, pipeline Jenkins e imagens no GHCR, monitoramento, preparação das VMs |
-| M2 Segurança e produção | 21/12 | Revisão de segurança, teste de carga, backups testados, E2E, primeiro deploy de produção |
+| M2 Segurança e produção | 21/12 | Revisão de segurança, teste de carga, backups testados, E2E, primeiro deploy de produção; CDN `cdn.groone.com` (Cloudflare) com os scripts do site, modulares (`tag.js` completo ou `page-views.js`, `loader.js` e `reward.js` soltos), decisão `docs/decisoes/20-cdn-dos-scripts.md` (Pedro, 23/11) |
 | M3 Piloto | 31/12 | Um cliente real da rede Groone (ainda não escolhido) |
 | M4 Métricas do GAM | feito | Models e sincronização das métricas, motor de consulta, primeira tela de desempenho. Desde a v0.82.0 (core#230), oito tabelas por nível (network, domínio, ad unit, key-value), resumidas e `_detail`; key-value sem dispositivo e particionado por key |
 | M5 Personalização e relatórios | quase: resta o épico avant-web#22 | Personalização no estilo HubSpot: dashboards, construtor de relatórios, páginas de relatório no menu, métricas personalizadas (fórmulas), metas, alertas, envios agendados, propriedades personalizadas, visões salvas, tema e marca. Épico: avant-web#22 |
