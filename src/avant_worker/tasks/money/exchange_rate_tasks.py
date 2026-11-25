@@ -1,6 +1,7 @@
 """Tarefa das cotações (fila ``default``): o dólar e as outras moedas do painel, por dia.
 
-``sync_exchange_rates`` roda a cada 6 horas (o plano grátis tem 1.000 pedidos por mês).
+``sync_exchange_rates`` roda de hora em hora, no minuto 5 (cerca de 750 pedidos por mês; o
+plano grátis tem 1.000), para o card do dólar da navbar.
 Grava o fim de cada dia fechado que falta (até ``BACKFILL_DAYS`` para trás na primeira vez)
 e a cotação de agora para hoje. Usa ``trusted_uow``: a cotação é dado público, sem
 Empresa. Worker sem ``OPENEXCHANGERATES_APP_ID`` não faz nada.

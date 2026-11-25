@@ -40,6 +40,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
         "avant",
         include=[
             "avant_worker.tasks.maintenance.purge_tasks",
+            "avant_worker.tasks.notifications.notification_tasks",
             "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
@@ -118,7 +119,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             },
             "exchange-rates-sync": {
                 "task": "avant.default.sync_exchange_rates",
-                "schedule": crontab(hour="*/6", minute=50),
+                "schedule": crontab(minute=5),
             },
             "gam-sync-mcm-earnings": {
                 "task": "avant.gam.sync_mcm_earnings",
@@ -245,6 +246,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "google-ads-changes": {
                 "task": "avant.google_ads.schedule_changes",
                 "schedule": crontab(minute=37),
+            },
+            "notifications-purge": {
+                "task": "avant.default.purge_old_notifications",
+                "schedule": crontab(hour=4, minute=35),
             },
             "reward-batches-purge": {
                 "task": "avant.default.purge_reward_batches",
