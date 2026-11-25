@@ -144,6 +144,7 @@ def test_child_publishers() -> None:
                 "email": "dono@acai.com.br",
                 "delegationType": "MANAGE_INVENTORY",
                 "accountStatus": "APPROVED",
+                "sellerId": "pub-123",
             },
             {
                 "name": "networks/9/childPublishers/9",
@@ -169,7 +170,8 @@ def test_child_publishers() -> None:
     inventory, account, invalid = gam.list_child_publishers("9")
     assert inventory.network_code == "123" and inventory.delegation is Delegation.MANAGE_INVENTORY
     assert inventory.account_status == "APPROVED" and inventory.email == "dono@acai.com.br"
-    assert inventory.revshare is None
+    assert inventory.revshare is None and inventory.seller_id == "pub-123"
+    assert account.seller_id is None
     assert account.delegation is Delegation.MANAGE_ACCOUNT
     assert account.revshare == Decimal("15.5")
     assert invalid.network_code == "789" and invalid.revshare is None

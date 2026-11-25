@@ -106,6 +106,7 @@ class RestGamClient:
                 delegation=_delegation(item.get("delegationType")),
                 account_status=str(item.get("accountStatus") or "UNSPECIFIED"),
                 revshare=_revshare(item.get("approvedManageAccountRevenueShareMillipercent")),
+                seller_id=str(item.get("sellerId") or "") or None,
             )
 
     def list_sites(self, network_code: str) -> Iterator[GamSite]:
