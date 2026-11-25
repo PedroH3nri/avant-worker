@@ -6,7 +6,7 @@ from avant_core.access.enums import SiteScope
 from avant_core.access.models import Actor, Grants
 from avant_core.company.models import Company, Membership
 from avant_core.gam.inventory.models import Site
-from avant_core.gam.tools.enums import GamFormat, GamRunState, GamToolKind
+from avant_core.gam.tools.enums import GamRunState, GamToolKind
 from avant_core.gam.tools.models import BlockSpec, GamOrderRef, GamTargetNetwork, LineItemSpec
 from avant_core.gam.tools.services import start_gam_tool
 from avant_core.identity.models import User
@@ -166,7 +166,6 @@ def test_run_tool_configures_the_network(services: Services) -> None:
         kind=GamToolKind.CONFIG,
         clock=services.clock,
         domains=["acai.com.br"],
-        block_format=GamFormat.LIGHT,
     )
     result = run_tool.delay(str(run.id)).get()
     assert result == {"state": "done", "error": None}
