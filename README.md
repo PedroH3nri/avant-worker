@@ -61,7 +61,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.gam.backfill_metrics(company_id, network_id, days=90)` | depois da primeira importação completa dos ad units da network | o histórico em lotes de 7 dias |
 | `avant.default.sync_page_views(company_id, network_id, start, end)` | pelo agendador abaixo | visitas da network no contador do iGroone/data (Mongo, só leitura), gravadas com upsert em `metrics.page_views_hourly`; avisa o painel com `metrics.updated` |
 | `avant.default.schedule_page_views` | de hora em hora (minuto 20) | ontem e hoje (datas de São Paulo, como no data) de cada network ativa; sem `PAGE_VIEWS_MONGO_URL`, não agenda nada |
-| `avant.default.sync_exchange_rates` | a cada 6 horas (minuto 50) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
+| `avant.default.sync_exchange_rates` | de hora em hora (minuto 5) | cotações do Open Exchange Rates: os dias fechados que faltam (100 para trás na primeira vez) e a de agora para hoje; sem `OPENEXCHANGERATES_APP_ID`, não faz nada |
 | `avant.default.flush_page_views` | a cada minuto | grava as páginas vistas que a api guardou em `avant:page-views:buffer` (país pelo IP com a GeoLite2; o IP não é gravado) nas visitas por hora, nas key-values e na saúde da tag |
 | `avant.default.ensure_page_view_partitions` | todo dia às 02:30 | cria as partições diárias de `metrics.page_view_events` de hoje e dos 7 dias seguintes |
 | `avant.gam.schedule_price_rule_hours` | minuto 55 de cada hora | para cada network com site de regra de preço ligada, `avant.gam.sync_price_rule_hours` baixa o relatório por hora da key `content_hash` (ontem e hoje) na moeda da network, sem conversão, e troca as linhas de `metrics.gam_key_value_hourly` |
@@ -93,6 +93,7 @@ A fila sai do nome da tarefa, `avant.<fila>.<nome>`:
 | `avant.google_ads.sync_metrics(company_id, account_id, days, with_terms)` | pelo agendador acima | números por campanha (inclui Performance Max), anúncio e palavra-chave e, com `with_terms`, por termo de pesquisa e posicionamento, gravados com upsert em `metrics.google_ads_*`; retries como acima |
 | `avant.google_ads.schedule_changes` e `sync_changes(company_id, account_id)` | de hora em hora (minuto 37) | o `change_event` da conta desde a última vez (até 29 dias), no histórico; a primeira rodada só marca o ponto de partida |
 | `avant.default.purge_reward_batches` | todo dia às 04:25 UTC | apaga os identificadores de lote de reward com mais de 7 dias |
+| `avant.default.purge_old_notifications` | todo dia às 04:35 UTC | apaga, em lotes, as notificações do sino com mais de 30 dias |
 
 As métricas das networks do MCM Manage Inventory ficam na network da Groone e ainda não
 entram aqui: terão uma tarefa própria, que lê um relatório só e distribui pelas Empresas.
