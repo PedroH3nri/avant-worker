@@ -1,12 +1,12 @@
 """Aplicação Celery. Rodar com:
 
-celery -A avant_worker.app worker -Q default,mail,gam,facebook,google_ads -l info
+celery -A avant_worker.app worker -Q default,mail,gam,facebook,google_ads,hubspot -l info
 celery -A avant_worker.app beat -l info
 
 Filas: ``default`` (limpeza e o resto), ``mail`` (e-mails), ``gam`` (Google Ad Manager,
-que tem cota própria), ``facebook`` (Graph API, também com cota própria) e ``google_ads`` (API
-do Google Ads, com a cota do developer token). A fila sai do nome da tarefa:
-``avant.<fila>.<nome>``.
+que tem cota própria), ``facebook`` (Graph API, também com cota própria), ``google_ads`` (API
+do Google Ads, com a cota do developer token) e ``hubspot`` (CRM da Groone). A fila sai do
+nome da tarefa: ``avant.<fila>.<nome>``.
 """
 
 import logging
@@ -23,7 +23,7 @@ from avant_worker.logs import configure_logging
 from avant_worker.services import _mailer, reset_after_fork
 from avant_worker.settings import BrokerSettings, InvalidVariable, Settings
 
-QUEUES = ("default", "mail", "gam", "facebook", "google_ads")
+QUEUES = ("default", "mail", "gam", "facebook", "google_ads", "hubspot")
 
 
 def _route(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -60,6 +60,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.price_rules.price_rule_tasks",
             "avant_worker.tasks.facebook.facebook_tasks",
             "avant_worker.tasks.google_ads.google_ads_tasks",
+            "avant_worker.tasks.hubspot.hubspot_tasks",
         ],
     )
     app.conf.update(
@@ -246,6 +247,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "google-ads-changes": {
                 "task": "avant.google_ads.schedule_changes",
                 "schedule": crontab(minute=37),
+            },
+            "hubspot-sync": {
+                "task": "avant.hubspot.sync",
+                "schedule": 60.0,
+                "options": {"expires": 55},
             },
             "notifications-purge": {
                 "task": "avant.default.purge_old_notifications",

@@ -32,6 +32,7 @@ src/avant_worker/
 | worker-gam | `celery -A avant_worker.app worker -Q gam -c 2 -l info` | Google Ad Manager; o único com a chave da conta de serviço |
 | worker-facebook | `celery -A avant_worker.app worker -Q facebook -c 2 -l info` | Graph API do Facebook (decisão 16); o único com o segredo do app da Meta e a chave dos tokens |
 | worker-google-ads | `celery -A avant_worker.app worker -Q google_ads -c 2 -l info` | API do Google Ads (decisão 17); o único com o segredo do cliente OAuth, o developer token e a chave dos tokens |
+| worker-hubspot | `celery -A avant_worker.app worker -Q hubspot -c 1 -l info` | Sincronia com o HubSpot da Groone (decisão 22); o único com `HUBSPOT_ACCESS_TOKEN` |
 | scheduler | `celery -A avant_worker.app beat -l info` | publica as tarefas agendadas; um só por ambiente |
 
 O agendador não fala com o banco: só precisa de `CELERY_BROKER_URL`.

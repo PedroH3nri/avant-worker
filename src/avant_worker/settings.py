@@ -79,6 +79,12 @@ class Settings(BrokerSettings):
     google_ads_developer_token: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
     google_ads_token_key: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
     google_ads_api_version: str = "v23"
+    # HubSpot da Groone (decisão 22): token do app privado e as fases do pipeline dos contratos.
+    # Sem o token, a fila hubspot não faz nada; sem as fases, os contratos não vão.
+    hubspot_access_token: str | None = Field(default=None, min_length=1, pattern=NOT_BLANK)
+    hubspot_deal_pipeline: str = "default"
+    hubspot_active_stage: str | None = None
+    hubspot_ended_stage: str | None = None
 
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
