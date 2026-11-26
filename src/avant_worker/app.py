@@ -253,6 +253,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "schedule": 60.0,
                 "options": {"expires": 55},
             },
+            "hubspot-sync-monthly": {
+                "task": "avant.hubspot.sync",
+                "schedule": crontab(hour=6, minute=20),
+                "kwargs": {"monthly": True},
+            },
             "notifications-purge": {
                 "task": "avant.default.purge_old_notifications",
                 "schedule": crontab(hour=4, minute=35),
