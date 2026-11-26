@@ -45,6 +45,7 @@ gh api repos/PedroH3nri/<repo>/pulls -f base=pre-develop -f head=<branch> \
 - Corpo do PR: `Closes #N`, o que muda e como foi testado.
 - Merge na `pre-develop` quando as checagens e o CI passam: a feature pronta entra ali sem revisão.
 - Promoção `pre-develop` → `develop` num PR próprio: revisão de código por um revisor de contexto novo (`requesting-code-review`) sobre o diff inteiro, que pode ter trabalho de outra sessão, e CI verde. Sem vulnerabilidade nem erro (nada crítico ou importante), o merge na `develop` está autorizado (Pedro, 03/11); se houver, corrija com teste na `pre-develop` e revise de novo. `main` e produção são sempre do Pedro.
+- A promoção `pre-develop` → `develop` é sempre com merge commit (`merge_method=merge`), nunca squash nem rebase: com squash a `develop` deixa de conter o histórico da `pre-develop` e o `graphify-out/` conflita na promoção seguinte. Se já conflitou, faça merge da `develop` numa branch a partir da `pre-develop`, fique com o lado da `pre-develop` no grafo, rode `graphify update .` e entre com merge commit.
 - O `gh api` mescla mesmo com a CI vermelha: espere `gh pr checks <N> --watch` passar antes de qualquer merge.
 - O branch padrão é `main`, então o `Closes #N` não fecha a issue: feche à mão depois que a mudança chegar à `develop`.
 
