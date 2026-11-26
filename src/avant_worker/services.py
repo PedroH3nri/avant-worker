@@ -23,6 +23,9 @@ from avant_core.gam.client.models import Gam
 from avant_core.gam.tools.interfaces import GamWriter
 from avant_core.google_ads.adapters import RestGoogleAdsGateway
 from avant_core.google_ads.interfaces import GoogleAdsGateway
+from avant_core.hubspot.adapters import RestHubspotGateway
+from avant_core.hubspot.interfaces import HubspotGateway
+from avant_core.hubspot.models import HubspotConfig
 from avant_core.identity.security.crypto import FernetSecretBox
 from avant_core.mail import build_mailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
@@ -129,6 +132,7 @@ class Services:
     facebook_box_override: "SecretBox | None" = None
     google_ads_override: "GoogleAdsGateway | None" = None
     google_ads_box_override: "SecretBox | None" = None
+    hubspot_override: "HubspotGateway | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -145,6 +149,7 @@ class Services:
         self._facebook_box: SecretBox | None = self.facebook_box_override
         self._google_ads: GoogleAdsGateway | None = self.google_ads_override
         self._google_ads_box: SecretBox | None = self.google_ads_box_override
+        self._hubspot: HubspotGateway | None = self.hubspot_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -274,6 +279,24 @@ class Services:
                 settings.google_ads_api_version,
             )
         return self._google_ads
+
+    @property
+    def hubspot(self) -> "HubspotGateway | None":
+        """A API do HubSpot com o token do app privado da Groone; vazia sem o token."""
+        if self._hubspot is None and self.settings.hubspot_access_token:
+            self._hubspot = RestHubspotGateway(self.settings.hubspot_access_token)
+        return self._hubspot
+
+    @property
+    def hubspot_config(self) -> HubspotConfig:
+        """O pipeline e as fases dos contratos e o endereço do painel para os links."""
+        settings = self.settings
+        return HubspotConfig(
+            pipeline=settings.hubspot_deal_pipeline,
+            active_stage=settings.hubspot_active_stage,
+            ended_stage=settings.hubspot_ended_stage,
+            panel_url=settings.app_base_url.rstrip("/"),
+        )
 
     @property
     def google_ads_box(self) -> "SecretBox":
