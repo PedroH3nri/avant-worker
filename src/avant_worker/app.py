@@ -62,6 +62,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.facebook.facebook_tasks",
             "avant_worker.tasks.google_ads.google_ads_tasks",
             "avant_worker.tasks.hubspot.hubspot_tasks",
+            "avant_worker.tasks.hubspot.followup_tasks",
         ],
     )
     app.conf.update(
@@ -258,6 +259,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "task": "avant.hubspot.sync",
                 "schedule": crontab(hour=6, minute=20),
                 "kwargs": {"monthly": True},
+            },
+            "hubspot-followups": {
+                "task": "avant.hubspot.followups",
+                "schedule": 900.0,
+                "options": {"expires": 840},
             },
             "nps-detractors": {
                 "task": "avant.default.warn_nps_detractors",
