@@ -62,6 +62,8 @@ TABLES = (
     "facebook_user_limits",
     "facebook_ad_accounts",
     "facebook_profiles",
+    "hubspot_links",
+    "hubspot_runs",
     "gam_key_values",
     "gam_tool_runs",
     "daily_commissions",
