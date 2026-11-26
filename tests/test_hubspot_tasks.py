@@ -16,7 +16,7 @@ from avant_core.hubspot.models import (
 )
 from avant_core.hubspot.services import request_hubspot_sync
 
-from avant_worker.app import _route
+from avant_worker.app import _route, app
 from avant_worker.services import Services
 from avant_worker.tasks.hubspot import sync_hubspot
 
@@ -24,13 +24,18 @@ from avant_worker.tasks.hubspot import sync_hubspot
 class FakeHubspot:
     """Um HubSpot em memória que cria tudo com ids novos."""
 
-    def __init__(self, refuse_token: bool = False) -> None:
+    def __init__(self, refuse_token: bool = False, custom_objects: bool = True) -> None:
         self.created: list[HubspotRecord] = []
         self.refuse_token = refuse_token
+        self.custom_objects = custom_objects
 
     def portal_id(self) -> str:
         """Portal de teste."""
         return "1"
+
+    def has_object(self, kind: HubspotKind) -> bool:
+        """Os personalizados só com a licença."""
+        return not kind.custom or self.custom_objects
 
     def ensure_properties(self, properties: list[HubspotProperty]) -> set[str]:
         """Todas existem; ou o token é recusado."""
@@ -124,3 +129,22 @@ def test_requested_sync_runs_and_a_refused_token_fails_the_run(services: Service
         saved = uow.hubspot_runs.get(run.id)
         assert saved is not None and saved.state is HubspotRunState.FAILED
         assert saved.error == "o HubSpot recusou o token do Avant"
+
+
+def test_monthly_sync_runs_right_after_the_routine(services: Services) -> None:
+    """A mensal do beat não espera os 15 minutos da de rotina; sem a licença, os objetos
+    personalizados ficam de fora sem erro."""
+    _client(services)
+    fake = FakeHubspot(custom_objects=False)
+    services._hubspot = fake
+    sync_hubspot.delay().get()
+    assert sync_hubspot.delay().get() == {"skipped": 1}
+    result = sync_hubspot.delay(monthly=True).get()
+    assert "failed" in result and result["failed"] == 0
+    assert all(not record.kind.custom for record in fake.created)
+
+
+def test_monthly_sync_is_scheduled_daily() -> None:
+    """O beat tem a mensal todo dia, com ``monthly``."""
+    entry = app.conf.beat_schedule["hubspot-sync-monthly"]
+    assert entry["task"] == "avant.hubspot.sync" and entry["kwargs"] == {"monthly": True}
