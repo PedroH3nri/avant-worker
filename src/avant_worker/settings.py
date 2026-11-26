@@ -4,7 +4,7 @@ from typing import Literal
 
 from avant_core.db.engine import EngineSettings
 from avant_core.mail import parse_smtp_url
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APPLICATION_NAME = "avant-worker"
@@ -88,6 +88,25 @@ class Settings(BrokerSettings):
 
     # Cotações do dia (Open Exchange Rates). Sem chave, a tarefa das cotações não roda.
     openexchangerates_app_id: str | None = None
+
+    @field_validator(
+        "resend_api_key",
+        "smtp_url",
+        "facebook_app_secret",
+        "facebook_token_key",
+        "google_ads_client_secret",
+        "google_ads_developer_token",
+        "google_ads_token_key",
+        "hubspot_access_token",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """Variável opcional vazia ou só com espaços conta como ausente: a integração fica
+        desligada e o worker sobe (o transporte de e-mail é exigido à parte)."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @model_validator(mode="after")
     def _transport_configured(self) -> "Settings":
