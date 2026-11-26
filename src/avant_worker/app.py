@@ -42,6 +42,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.maintenance.purge_tasks",
             "avant_worker.tasks.notifications.notification_tasks",
             "avant_worker.tasks.nps.nps_tasks",
+            "avant_worker.tasks.usage.usage_tasks",
             "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
@@ -272,6 +273,15 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "notifications-purge": {
                 "task": "avant.default.purge_old_notifications",
                 "schedule": crontab(hour=4, minute=35),
+            },
+            "usage-flush": {
+                "task": "avant.default.flush_usage",
+                "schedule": crontab(minute=7),
+                "options": {"expires": 50 * 60},
+            },
+            "usage-purge": {
+                "task": "avant.default.purge_usage",
+                "schedule": crontab(hour=4, minute=45),
             },
             "reward-batches-purge": {
                 "task": "avant.default.purge_reward_batches",
