@@ -43,6 +43,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.notifications.notification_tasks",
             "avant_worker.tasks.nps.nps_tasks",
             "avant_worker.tasks.usage.usage_tasks",
+            "avant_worker.tasks.nurture.nurture_tasks",
             "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
@@ -277,6 +278,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "usage-flush": {
                 "task": "avant.default.flush_usage",
                 "schedule": crontab(minute=7),
+                "options": {"expires": 50 * 60},
+            },
+            "nurture-run": {
+                "task": "avant.default.run_nurture",
+                "schedule": crontab(minute=17),
                 "options": {"expires": 50 * 60},
             },
             "usage-purge": {

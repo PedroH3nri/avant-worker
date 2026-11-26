@@ -30,7 +30,8 @@ from avant_core.identity.security.crypto import FernetSecretBox
 from avant_core.mail import build_mailer
 from avant_core.metrics.models import GamMcmEarning, GamReportRow, PageViewCount
 from avant_core.metrics.models.gam_daily_metric import REPORT_CURRENCY
-from avant_core.ports import Mailer, SecretBox
+from avant_core.nurture.adapters import build_nurture_mailer
+from avant_core.ports import Mailer, NurtureMailer, SecretBox
 from avant_core.shared.clock import Clock, SystemClock
 from avant_core.site_checklists.interfaces import PageFetcher
 from sqlalchemy import Engine
@@ -133,6 +134,7 @@ class Services:
     google_ads_override: "GoogleAdsGateway | None" = None
     google_ads_box_override: "SecretBox | None" = None
     hubspot_override: "HubspotGateway | None" = None
+    nurture_mailer_override: "NurtureMailer | None" = None
 
     def __post_init__(self) -> None:
         # Entidades criadas por uma tarefa antes do primeiro Unit of Work já saem mapeadas.
@@ -150,6 +152,7 @@ class Services:
         self._google_ads: GoogleAdsGateway | None = self.google_ads_override
         self._google_ads_box: SecretBox | None = self.google_ads_box_override
         self._hubspot: HubspotGateway | None = self.hubspot_override
+        self._nurture_mailer: NurtureMailer | None = self.nurture_mailer_override
         self._held: dict[str, redis.lock.Lock] = {}
 
     @classmethod
@@ -286,6 +289,19 @@ class Services:
         if self._hubspot is None and self.settings.hubspot_access_token:
             self._hubspot = RestHubspotGateway(self.settings.hubspot_access_token)
         return self._hubspot
+
+    @property
+    def nurture_mailer(self) -> "NurtureMailer":
+        """O mailer das réguas no mesmo transporte dos outros e-mails (Resend ou SMTP)."""
+        if self._nurture_mailer is None:
+            settings = self.settings
+            self._nurture_mailer = build_nurture_mailer(
+                transport=settings.mail_transport,
+                sender=settings.mail_from,
+                resend_api_key=settings.resend_api_key,
+                smtp_url=settings.smtp_url,
+            )
+        return self._nurture_mailer
 
     @property
     def hubspot_config(self) -> HubspotConfig:
