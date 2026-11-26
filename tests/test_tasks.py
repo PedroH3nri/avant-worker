@@ -183,6 +183,47 @@ def test_a_resend_key_with_only_spaces_does_not_start(clean_env: pytest.MonkeyPa
         Settings(**{**RESEND, "resend_api_key": "   "})
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "facebook_app_secret",
+        "facebook_token_key",
+        "google_ads_client_secret",
+        "google_ads_developer_token",
+        "google_ads_token_key",
+        "hubspot_access_token",
+    ],
+)
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_an_empty_integration_variable_turns_the_integration_off(
+    clean_env: pytest.MonkeyPatch, field: str, blank: str
+) -> None:
+    settings = Settings(**{**RESEND, field: blank})
+    assert getattr(settings, field) is None
+
+
+def test_empty_integration_variables_from_the_environment_still_start(
+    clean_env: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "FACEBOOK_APP_SECRET",
+        "FACEBOOK_TOKEN_KEY",
+        "GOOGLE_ADS_CLIENT_SECRET",
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+        "GOOGLE_ADS_TOKEN_KEY",
+        "HUBSPOT_ACCESS_TOKEN",
+    ):
+        clean_env.setenv(name, "")
+    settings = Settings(**RESEND)
+    assert settings.hubspot_access_token is None
+    assert settings.facebook_token_key is None
+
+
+def test_an_empty_resend_key_is_named_in_the_error(clean_env: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError, match="RESEND_API_KEY"):
+        Settings(**{**RESEND, "resend_api_key": ""})
+
+
 def test_the_redis_url_needs_a_redis_scheme(clean_env: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError):
         Settings(**{**RESEND, "redis_url": "http://r"})
