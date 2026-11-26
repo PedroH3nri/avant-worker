@@ -51,5 +51,7 @@ def sync_hubspot_followups() -> dict[str, int]:
         with services.trusted_uow() as uow:
             created = save_hubspot_tasks(uow, outcomes, services.clock.now())
     closed = sum(1 for outcome in outcomes if outcome.completed)
-    log.info("tarefas do HubSpot em dia", extra={"tasks_created": created, "tasks_completed": closed})
+    log.info(
+        "tarefas do HubSpot em dia", extra={"tasks_created": created, "tasks_completed": closed}
+    )
     return {"created": created, "completed": closed}
