@@ -4,21 +4,26 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from avant_core.company.enums import CompanyStatus
-from avant_core.company.models import ClientProfile
+from avant_core.company.models import ClientProfile, Company
+from avant_core.gam.networks.enums import ConnectionType, NetworkStatus
+from avant_core.gam.networks.models import Network
 from avant_core.hubspot.enums import HubspotKind, HubspotRunState
 from avant_core.hubspot.errors import HubspotRejected
 from avant_core.hubspot.models import (
     HubspotAssociation,
     HubspotCard,
+    HubspotLink,
     HubspotProperty,
+    HubspotProspectPage,
     HubspotRecord,
+    HubspotTaskDraft,
     HubspotWriteResult,
 )
 from avant_core.hubspot.services import request_hubspot_sync
 
 from avant_worker.app import _route, app
 from avant_worker.services import Services
-from avant_worker.tasks.hubspot import sync_hubspot
+from avant_worker.tasks.hubspot import sync_hubspot, sync_hubspot_followups
 
 
 class FakeHubspot:
@@ -28,6 +33,8 @@ class FakeHubspot:
         self.created: list[HubspotRecord] = []
         self.refuse_token = refuse_token
         self.custom_objects = custom_objects
+        self.tasks: list[tuple[HubspotTaskDraft, str | None]] = []
+        self.done: set[str] = set()
 
     def portal_id(self) -> str:
         """Portal de teste."""
@@ -71,6 +78,22 @@ class FakeHubspot:
     def card(self, kind: HubspotKind, hubspot_id: str) -> HubspotCard:
         """Não usado pelo worker."""
         return HubspotCard(kind, hubspot_id)
+
+    def create_task(self, draft: HubspotTaskDraft, owner_id: str | None) -> str:
+        """Cria a tarefa com id sequencial."""
+        self.tasks.append((draft, owner_id))
+        return f"t{len(self.tasks)}"
+
+    def completed_tasks(self, hubspot_ids: list[str]) -> set[str]:
+        """As que o teste marcou como feitas."""
+        return {item for item in hubspot_ids if item in self.done}
+
+    def complete_tasks(self, hubspot_ids: list[str]) -> None:
+        """Não guarda nada."""
+
+    def prospects(self, stages: list[str], query: str, after: str | None) -> HubspotProspectPage:
+        """Não usado pelo worker."""
+        return HubspotProspectPage()
 
 
 def _client(services: Services) -> uuid.UUID:
@@ -148,3 +171,38 @@ def test_monthly_sync_is_scheduled_daily() -> None:
     """O beat tem a mensal todo dia, com ``monthly``."""
     entry = app.conf.beat_schedule["hubspot-sync-monthly"]
     assert entry["task"] == "avant.hubspot.sync" and entry["kwargs"] == {"monthly": True}
+
+
+def test_followups_go_to_the_hubspot_queue_every_15_minutes() -> None:
+    """As tarefas do gerente vão para a fila hubspot, a cada 15 minutos."""
+    assert _route("avant.hubspot.followups") == {"queue": "hubspot"}
+    assert app.conf.beat_schedule["hubspot-followups"]["schedule"] == 900.0
+
+
+def test_followups_do_nothing_without_the_token(services: Services) -> None:
+    """Sem HUBSPOT_ACCESS_TOKEN a tarefa só volta."""
+    services._hubspot = None
+    assert sync_hubspot_followups.delay().get() == {"skipped": 1}
+
+
+def test_network_error_becomes_one_task_on_the_client_contact(services: Services) -> None:
+    """A network com erro de um cliente já no HubSpot vira uma tarefa, só uma vez."""
+    client_id = _client(services)
+    company = Company("Hub Tarefas", None, 3, f"hubt-{client_id.hex[:8]}", client_id=client_id)
+    network = Network(
+        company.id, f"94{client_id.int % 10**6:06d}", ConnectionType.MCM, datetime.now(UTC)
+    )
+    network.client_id, network.status = client_id, NetworkStatus.ERROR
+    with services.trusted_uow() as uow:
+        uow.companies.add(company)
+        uow.networks.add(network)
+        uow.hubspot_links.add(HubspotLink(HubspotKind.CONTACT, client_id, "Ana", hubspot_id="501"))
+        uow.commit()
+    fake = FakeHubspot()
+    services._hubspot = fake
+    result = sync_hubspot_followups.delay().get()
+    assert result["created"] >= 1
+    mine = [draft for draft, _owner in fake.tasks if draft.contact_id == "501"]
+    assert len(mine) == 1 and "com erro" in mine[0].subject
+    sync_hubspot_followups.delay().get()
+    assert len([draft for draft, _owner in fake.tasks if draft.contact_id == "501"]) == 1
