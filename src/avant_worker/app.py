@@ -41,6 +41,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
         include=[
             "avant_worker.tasks.maintenance.purge_tasks",
             "avant_worker.tasks.notifications.notification_tasks",
+            "avant_worker.tasks.nps.nps_tasks",
             "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
@@ -257,6 +258,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "task": "avant.hubspot.sync",
                 "schedule": crontab(hour=6, minute=20),
                 "kwargs": {"monthly": True},
+            },
+            "nps-detractors": {
+                "task": "avant.default.warn_nps_detractors",
+                "schedule": 300.0,
             },
             "notifications-purge": {
                 "task": "avant.default.purge_old_notifications",
