@@ -375,14 +375,8 @@ def test_metrics_enforce_the_monthly_limit_and_rules_skip_accounts_without_site(
     assert _count(services, "google_ads_rule_decisions") == 0
 
 
-def test_run_job_creates_once_syncs_the_login_and_tells_the_screen(
-    services: Services, google_ads: FakeGoogleAds, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    published: list[tuple[str, dict[str, str]]] = []
-    monkeypatch.setattr(
-        "avant_worker.tasks.google_ads.google_ads_tasks.publish",
-        lambda client, company, kind, data: published.append((kind, data)),
-    )
+def _queued_job(services: Services) -> tuple[uuid.UUID, GoogleAdsJob]:
+    """Uma Empresa com a conta sincronizada e um job de criar campanha na fila."""
     company_id, login = _login(services)
     schedule_structure.delay().get()
     draft = GoogleAdsDraft(
@@ -412,6 +406,18 @@ def test_run_job_creates_once_syncs_the_login_and_tells_the_screen(
         )
         uow.google_ads_jobs.add(job)
         uow.commit()
+    return company_id, job
+
+
+def test_run_job_creates_once_syncs_the_login_and_tells_the_screen(
+    services: Services, google_ads: FakeGoogleAds, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    published: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "avant_worker.tasks.google_ads.google_ads_tasks.publish",
+        lambda client, company, kind, data: published.append((kind, data)),
+    )
+    company_id, job = _queued_job(services)
     accounts_before = google_ads.calls.count("accounts")
     assert run_job.delay(str(company_id), str(job.id)).get() == "done"
     assert google_ads.calls.count("create:Cartões") == 1
@@ -423,3 +429,23 @@ def test_run_job_creates_once_syncs_the_login_and_tells_the_screen(
         assert finished is not None and finished.created["campaign"] == "800"
     expected = ("google_ads.job.updated", {"job_id": str(job.id)})
     assert len(published) == 2 and all(event == expected for event in published)
+
+
+def test_run_job_with_the_lock_taken_tries_again_later(
+    services: Services, google_ads: FakeGoogleAds
+) -> None:
+    company_id, job = _queued_job(services)
+    with services.lock(f"google_ads:job:{job.id}", timeout=60) as locked:
+        assert locked
+        with pytest.raises(Retry):
+            run_job.apply(args=(str(company_id), str(job.id)), throw=True)
+    assert google_ads.calls.count("create:Cartões") == 0
+
+
+def test_run_job_of_another_company_does_not_call_google(
+    services: Services, google_ads: FakeGoogleAds
+) -> None:
+    _company_id, job = _queued_job(services)
+    other_id, _login_other = _login(services)
+    assert run_job.delay(str(other_id), str(job.id)).get() == "skipped"
+    assert google_ads.calls.count("create:Cartões") == 0
