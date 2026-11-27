@@ -252,6 +252,10 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "task": "avant.google_ads.schedule_changes",
                 "schedule": crontab(minute=37),
             },
+            "google-ads-rules": {
+                "task": "avant.google_ads.schedule_rules",
+                "schedule": crontab(hour=9, minute=5),
+            },
             "hubspot-sync": {
                 "task": "avant.hubspot.sync",
                 "schedule": 60.0,
