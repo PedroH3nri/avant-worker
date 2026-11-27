@@ -48,6 +48,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.site_security.site_integrity_tasks",
             "avant_worker.tasks.traffic_quality.traffic_quality_tasks",
             "avant_worker.tasks.opportunities.opportunity_tasks",
+            "avant_worker.tasks.activation.activation_tasks",
             "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
@@ -298,6 +299,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "opportunities": {
                 "task": "avant.default.evaluate_opportunities",
                 "schedule": crontab(hour=6, minute=0),
+                "options": {"expires": 6 * 60 * 60},
+            },
+            "activation": {
+                "task": "avant.default.record_activation_milestones",
+                "schedule": crontab(hour=5, minute=45),
                 "options": {"expires": 6 * 60 * 60},
             },
             "nps-detractors": {
