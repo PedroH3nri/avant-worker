@@ -227,3 +227,19 @@ def test_slow_body_stops_at_the_total_deadline_with_what_arrived(
     page = HttpPageFetcher(interval=0).fetch(f"http://127.0.0.1:{port}/")
     assert time.monotonic() - started < SHORT_DEADLINE * 3
     assert page is not None and page.status == 200 and page.body.startswith("<p>a")
+
+
+def test_scripts_are_read_for_the_security_check(dripping_server: DrippingServer) -> None:
+    head = (
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\nContent-Length: 3\r\n\r\nvar"
+    )
+    port = dripping_server(head, b"")
+    page = HttpPageFetcher(interval=0).fetch(f"http://127.0.0.1:{port}/a.js")
+    assert page is not None and page.body == "var"
+
+
+def test_images_still_come_back_empty(dripping_server: DrippingServer) -> None:
+    head = b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 3\r\n\r\nPNG"
+    port = dripping_server(head, b"")
+    page = HttpPageFetcher(interval=0).fetch(f"http://127.0.0.1:{port}/a.png")
+    assert page is not None and page.body == ""

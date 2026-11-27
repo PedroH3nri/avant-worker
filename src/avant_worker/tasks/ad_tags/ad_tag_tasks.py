@@ -25,6 +25,7 @@ from avant_core.ad_tags.enums import AdTagBlockState, AdTagDevice
 from avant_core.ad_tags.models import PageViewHit, PageViewHitBlock
 from avant_core.ad_tags.services import network_ad_tag_keys, record_page_views
 from avant_core.metrics.services import ensure_page_view_partitions
+from avant_core.site_security.models import PageIntegrity
 
 from avant_worker.app import app
 from avant_worker.services import CountryLookup, Services, get_services
@@ -148,6 +149,7 @@ def _hit(data: dict[str, Any], countries: CountryLookup | None) -> PageViewHit:
             PageViewHitBlock(str(block["type"]), AdTagBlockState(block["state"]))
             for block in data.get("blocks") or []
         ),
+        integrity=PageIntegrity.parse(data.get("integrity")),
     )
 
 

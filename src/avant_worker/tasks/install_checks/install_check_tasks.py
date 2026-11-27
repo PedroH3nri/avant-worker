@@ -1,10 +1,12 @@
-"""Tarefas da verificação de instalação da ad tag, do loader e do reward (decisão 21).
+"""Tarefas da verificação de instalação da ad tag, do loader, do reward (decisão 21) e da
+segurança do site (decisão 23: páginas e scripts externos lidos, nada executado).
 
 - ``check_install``: verifica um item pedido no botão do painel, com ``services.uow`` da
   Empresa (RLS). O ``trusted_uow`` só conta quantas Empresas têm o domínio do reward ativo.
 - ``daily_install_checks``: todo dia às 06:30 UTC (03:30 em Brasília) lista, com
-  ``trusted_uow`` (varre todas as Empresas), as ad tags publicadas, os loaders em uso e os
-  rewards ativos, e pede a verificação de cada site pelo ``dispatch_install_checks``.
+  ``trusted_uow`` (varre todas as Empresas), as ad tags publicadas, os loaders em uso, a
+  segurança de cada site com tag no ar e os rewards ativos, e pede a verificação de cada site
+  pelo ``dispatch_install_checks``.
 - ``dispatch_install_checks``: solta 12 sites por minuto e se reagenda com o resto, como o
   checklist.
 - ``check_site_installs``: verifica os itens de um site com uma busca só por página e grava
