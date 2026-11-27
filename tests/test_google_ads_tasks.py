@@ -237,8 +237,11 @@ def test_beat_runs_structure_hourly_and_metrics_every_thirty_minutes() -> None:
     assert schedule["google-ads-metrics-today"]["schedule"].minute == {5, 35}
     assert schedule["google-ads-metrics-late"]["kwargs"] == {"days": 3, "with_terms": True}
     assert schedule["google-ads-changes"]["task"] == "avant.google_ads.schedule_changes"
+    yesterday = schedule["google-ads-metrics-yesterday"]
+    assert (yesterday["schedule"].hour, yesterday["schedule"].minute) == ({8}, {45})
+    assert yesterday["kwargs"] == {"days": 2}
     rules = schedule["google-ads-rules"]["schedule"]
-    assert (rules.hour, rules.minute) == ({9}, {5})
+    assert (rules.hour, rules.minute) == ({9}, {20})
 
 
 def test_structure_metrics_and_changes_fill_the_company(
