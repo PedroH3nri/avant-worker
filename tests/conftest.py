@@ -38,6 +38,7 @@ OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "benchmark_groups",
     "activation_milestones",
     "site_opportunities",
     "traffic_alerts",
