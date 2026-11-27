@@ -8,16 +8,22 @@ conta, para poupar a cota do developer token.
 
 G2: depois de cada sincronia de números, a conta passa pelos limites de gasto; a sincronia
 noturna dos termos também confere os termos que gastam sem retorno. As regras automáticas rodam
-uma vez por dia, às 06:00 de São Paulo, depois dos números do dia anterior.
+uma vez por dia, às 06:20 de São Paulo, depois dos números do dia anterior.
+
+G3: a api grava o job de criar ou editar e manda ``run_job``; o core faz a chamada e o começo e
+o fim viram o evento ``google_ads.job.updated`` para a tela acompanhar.
 """
 
 import logging
 import uuid
 from typing import Any
 
+from avant_core.google_ads.enums import GoogleAdsJobKind, GoogleAdsJobState
 from avant_core.google_ads.errors import GoogleAdsUnavailable
+from avant_core.google_ads.models import GoogleAdsJob
 from avant_core.google_ads.services import (
     enforce_google_ads_limits,
+    execute_google_ads_job,
     google_ads_accounts_to_sync,
     google_ads_logins_to_sync,
     google_ads_rule_accounts,
@@ -28,12 +34,16 @@ from avant_core.google_ads.services import (
     warn_google_ads_bad_terms,
 )
 
+from avant_worker.adapters.events import GOOGLE_ADS_JOB_UPDATED, publish
 from avant_worker.app import app
 from avant_worker.services import get_services
 
 log = logging.getLogger("avant.worker.google_ads")
 
 LOCK_SECONDS = 15 * 60
+JOB_SOFT_LIMIT_SECONDS = 5 * 60
+JOB_HARD_LIMIT_SECONDS = 6 * 60
+JOB_LOCK_SECONDS = JOB_HARD_LIMIT_SECONDS + 60
 RETRY_FOR = (GoogleAdsUnavailable,)
 TODAY = 1
 LATE_DAYS = 3
@@ -215,3 +225,51 @@ def run_rules(company_id: str, account_id: str) -> int:
             account_id=uuid.UUID(account_id),
             clock=services.clock,
         )
+
+
+@app.task(
+    name="avant.google_ads.run_job",
+    bind=True,
+    soft_time_limit=JOB_SOFT_LIMIT_SECONDS,
+    time_limit=JOB_HARD_LIMIT_SECONDS,
+    max_retries=1,
+)
+def run_job(self: Any, company_id: str, job_id: str) -> str:
+    """Cria a campanha ou edita o nível pelo job; rodar de novo não chama o Google outra vez.
+    Trava ocupada (talvez de um worker que caiu) tenta de novo depois que ela vence."""
+    services = get_services()
+    company_uuid = uuid.UUID(company_id)
+
+    def notify(job: GoogleAdsJob) -> None:
+        """Avisa a tela aberta que o job mudou de situação."""
+        publish(services.redis, company_uuid, GOOGLE_ADS_JOB_UPDATED, {"job_id": str(job.id)})
+
+    with services.lock(f"google_ads:job:{job_id}", timeout=JOB_LOCK_SECONDS) as locked:
+        if not locked:
+            raise self.retry(countdown=JOB_LOCK_SECONDS)
+        job = execute_google_ads_job(
+            services.uow(company_uuid),
+            gateway=services.google_ads,
+            box=services.google_ads_box,
+            job_id=uuid.UUID(job_id),
+            clock=services.clock,
+            notify=notify,
+        )
+    if job is None:
+        return "skipped"
+    if job.kind is GoogleAdsJobKind.CREATE and job.state is GoogleAdsJobState.DONE:
+        _sync_created(company_uuid, job.account_id)
+    log.info(
+        "job do google ads terminado",
+        extra={"job_id": job_id, "state": job.state.value, "error": job.error_code},
+    )
+    return job.state.value
+
+
+def _sync_created(company_id: uuid.UUID, account_id: uuid.UUID) -> None:
+    """Pede a sincronia do login da conta, que traz a campanha que acabou de nascer."""
+    with get_services().uow(company_id) as uow:
+        account = uow.google_ads_accounts.get(account_id)
+        login_id = account.login_id if account else None
+    if login_id is not None:
+        sync_login.delay(str(company_id), str(login_id))
