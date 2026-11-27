@@ -44,6 +44,7 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
             "avant_worker.tasks.nps.nps_tasks",
             "avant_worker.tasks.usage.usage_tasks",
             "avant_worker.tasks.nurture.nurture_tasks",
+            "avant_worker.tasks.portfolio_health.portfolio_health_tasks",
             "avant_worker.tasks.mail.password_reset_tasks",
             "avant_worker.tasks.gam.network_tasks",
             "avant_worker.tasks.gam.mcm_tasks",
@@ -275,6 +276,11 @@ def create_app(settings: BrokerSettings | None = None) -> Celery:
                 "task": "avant.hubspot.followups",
                 "schedule": 900.0,
                 "options": {"expires": 840},
+            },
+            "portfolio-health": {
+                "task": "avant.default.compute_portfolio_health",
+                "schedule": crontab(hour=5, minute=30),
+                "options": {"expires": 60 * 60},
             },
             "nps-detractors": {
                 "task": "avant.default.warn_nps_detractors",
