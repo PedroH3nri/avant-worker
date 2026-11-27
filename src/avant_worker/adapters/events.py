@@ -22,6 +22,8 @@ GAM_TOOL_RUN_UPDATED = "gam_tool_run.updated"
 
 FACEBOOK_JOB_UPDATED = "facebook.job.updated"
 
+GOOGLE_ADS_JOB_UPDATED = "google_ads.job.updated"
+
 INSTALL_CHECK_UPDATED = "install_check.updated"
 
 

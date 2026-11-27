@@ -9,6 +9,10 @@ from typing import Any
 import pytest
 from avant_core.google_ads.enums import (
     GoogleAdsAccountStatus,
+    GoogleAdsBidding,
+    GoogleAdsChannel,
+    GoogleAdsJobKind,
+    GoogleAdsJobState,
     GoogleAdsLevel,
     GoogleAdsOnLimit,
 )
@@ -17,16 +21,22 @@ from avant_core.google_ads.models import (
     GoogleAdsAccountData,
     GoogleAdsCampaignRow,
     GoogleAdsChangeData,
+    GoogleAdsDraft,
+    GoogleAdsDraftAd,
+    GoogleAdsDraftAdGroup,
+    GoogleAdsJob,
     GoogleAdsKeywordData,
     GoogleAdsKeywordRow,
     GoogleAdsLogin,
     GoogleAdsMetricRow,
     GoogleAdsObjectData,
+    GoogleAdsOption,
     GoogleAdsPlacementRow,
     GoogleAdsRule,
     GoogleAdsSearchTermRow,
     GoogleAdsToken,
 )
+from avant_core.google_ads.services.google_ads_drafts import draft_to_json
 from avant_core.identity.security.crypto import FernetSecretBox
 from celery.exceptions import Retry
 from cryptography.fernet import Fernet
@@ -35,6 +45,7 @@ from sqlalchemy import text
 from avant_worker.app import _route, app
 from avant_worker.services import GoogleAdsNotConfigured, Services
 from avant_worker.tasks.google_ads import (
+    run_job,
     schedule_changes,
     schedule_metrics,
     schedule_rules,
@@ -181,6 +192,62 @@ class FakeGoogleAds:
     def revoke(self, token: str) -> None:
         """Não usado pelo worker."""
 
+    def upload_image(
+        self, token: str, login: str, customer_id: str, name: str, content: bytes
+    ) -> str:
+        """Não usado pelo worker."""
+        raise NotImplementedError
+
+    def options(
+        self, token: str, login: str, customer_id: str, kind: str, query: str, locale: str
+    ) -> list[GoogleAdsOption]:
+        """Não usado pelo worker."""
+        raise NotImplementedError
+
+    def create_campaign(
+        self,
+        token: str,
+        login: str,
+        customer_id: str,
+        draft: GoogleAdsDraft,
+        site_url: str,
+        tag: str,
+    ) -> dict[str, object]:
+        """Guarda a criação e devolve os ids da campanha nova."""
+        self.calls.append(f"create:{draft.name}")
+        return {"campaign": "800", "ad_groups": ["900"], "ads": ["901"]}
+
+    def rename(
+        self,
+        token: str,
+        login: str,
+        customer_id: str,
+        level: GoogleAdsLevel,
+        object_id: str,
+        name: str,
+    ) -> None:
+        """Guarda o nome novo."""
+        self.calls.append(f"rename:{object_id}:{name}")
+
+    def set_ad_group_cpc(
+        self, token: str, login: str, customer_id: str, ad_group_id: str, cpc_micros: int
+    ) -> None:
+        """Não usado neste teste."""
+        raise NotImplementedError
+
+    def update_ad(
+        self,
+        token: str,
+        login: str,
+        customer_id: str,
+        ad_id: str,
+        channel: GoogleAdsChannel,
+        ad: GoogleAdsDraftAd,
+        site_url: str,
+    ) -> None:
+        """Não usado neste teste."""
+        raise NotImplementedError
+
 
 @pytest.fixture
 def google_ads(services: Services) -> FakeGoogleAds:
@@ -306,3 +373,53 @@ def test_metrics_enforce_the_monthly_limit_and_rules_skip_accounts_without_site(
     assert _count(services, "google_ads_alerts") == 1
     assert schedule_rules.delay().get() == 1
     assert _count(services, "google_ads_rule_decisions") == 0
+
+
+def test_run_job_creates_once_syncs_the_login_and_tells_the_screen(
+    services: Services, google_ads: FakeGoogleAds, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    published: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "avant_worker.tasks.google_ads.google_ads_tasks.publish",
+        lambda client, company, kind, data: published.append((kind, data)),
+    )
+    company_id, login = _login(services)
+    schedule_structure.delay().get()
+    draft = GoogleAdsDraft(
+        name="Cartões",
+        channel=GoogleAdsChannel.SEARCH,
+        budget_micros=50_000_000,
+        bidding=GoogleAdsBidding.MAXIMIZE_CLICKS,
+        ad_groups=(
+            GoogleAdsDraftAdGroup(
+                name="Grupo",
+                ads=(GoogleAdsDraftAd("/", ("Um", "Dois", "Três"), ("Uma", "Duas")),),
+            ),
+        ),
+    )
+    now = services.clock.now()
+    with services.uow(company_id) as uow:
+        account = uow.google_ads_accounts.list_for_login(login.id)[0]
+        job = GoogleAdsJob(
+            company_id=company_id,
+            account_id=account.id,
+            kind=GoogleAdsJobKind.CREATE,
+            state=GoogleAdsJobState.QUEUED,
+            payload=draft_to_json(draft),
+            created_at=now,
+            updated_at=now,
+            created_by=login.user_id,
+        )
+        uow.google_ads_jobs.add(job)
+        uow.commit()
+    accounts_before = google_ads.calls.count("accounts")
+    assert run_job.delay(str(company_id), str(job.id)).get() == "done"
+    assert google_ads.calls.count("create:Cartões") == 1
+    assert google_ads.calls.count("accounts") == accounts_before + 1
+    assert run_job.delay(str(company_id), str(job.id)).get() == "skipped"
+    assert google_ads.calls.count("create:Cartões") == 1
+    with services.uow(company_id) as uow:
+        finished = uow.google_ads_jobs.get(job.id)
+        assert finished is not None and finished.created["campaign"] == "800"
+    expected = ("google_ads.job.updated", {"job_id": str(job.id)})
+    assert len(published) == 2 and all(event == expected for event in published)
