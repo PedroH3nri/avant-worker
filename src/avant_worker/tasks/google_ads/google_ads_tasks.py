@@ -183,8 +183,8 @@ def sync_changes(company_id: str, account_id: str) -> int:
 
 @app.task(name="avant.google_ads.schedule_rules", soft_time_limit=5 * 60, time_limit=6 * 60)
 def schedule_rules() -> int:
-    """Todo dia às 09:05 UTC (06:05 em São Paulo): uma tarefa por conta com regra ligada,
-    depois dos números do dia anterior. Varre todas as Empresas com ``trusted_uow()``."""
+    """Todo dia às 09:20 UTC (06:20 em São Paulo), depois da sincronia de ontem das 08:45: uma
+    tarefa por conta com regra ligada. Varre todas as Empresas com ``trusted_uow()``."""
     targets = google_ads_rule_accounts(get_services().trusted_uow())
     for target in targets:
         run_rules.delay(str(target.company_id), str(target.target_id))
