@@ -38,6 +38,8 @@ OWNER_URL = os.environ.get("AVANT_TEST_MIGRATIONS_URL")
 REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
+    "client_health_scores",
+    "revenue_drops",
     "nurture_rules",
     "google_ads_rule_decisions",
     "google_ads_rules",
