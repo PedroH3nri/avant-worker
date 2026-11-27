@@ -39,6 +39,8 @@ REDIS_URL = os.environ.get("AVANT_TEST_REDIS_URL")
 GROONE_NETWORK = "9999"
 TABLES = (
     "nurture_rules",
+    "google_ads_rule_decisions",
+    "google_ads_rules",
     "metrics.google_ads_campaign_daily",
     "metrics.google_ads_daily",
     "metrics.google_ads_keyword_daily",

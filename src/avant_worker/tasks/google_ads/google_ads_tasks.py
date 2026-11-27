@@ -5,6 +5,10 @@ manda uma tarefa por login ou conta, que roda no Unit of Work da Empresa (RLS). 
 do Google (cota, 5xx, rede) tenta de novo em 1, 2, 4 e 8 minutos; token revogado não é erro da
 tarefa: o core marca o login e avisa quem conectou. Cada consulta é um ``searchStream`` por
 conta, para poupar a cota do developer token.
+
+G2: depois de cada sincronia de números, a conta passa pelos limites de gasto; a sincronia
+noturna dos termos também confere os termos que gastam sem retorno. As regras automáticas rodam
+uma vez por dia, às 06:00 de São Paulo, depois dos números do dia anterior.
 """
 
 import logging
@@ -13,11 +17,15 @@ from typing import Any
 
 from avant_core.google_ads.errors import GoogleAdsUnavailable
 from avant_core.google_ads.services import (
+    enforce_google_ads_limits,
     google_ads_accounts_to_sync,
     google_ads_logins_to_sync,
+    google_ads_rule_accounts,
+    run_google_ads_rules,
     sync_google_ads_changes,
     sync_google_ads_login,
     sync_google_ads_metrics,
+    warn_google_ads_bad_terms,
 )
 
 from avant_worker.app import app
@@ -99,13 +107,13 @@ def schedule_metrics(days: int = TODAY, with_terms: bool = False) -> int:
 def sync_metrics(
     company_id: str, account_id: str, days: int = TODAY, with_terms: bool = False
 ) -> int:
-    """Grava os números por campanha, anúncio e palavra-chave dos últimos ``days`` dias e, com
-    ``with_terms``, por termo de pesquisa e posicionamento."""
+    """Grava os números dos últimos ``days`` dias (com ``with_terms``, termos, posicionamentos e
+    o aviso de termos ruins) e confere os limites de gasto da conta."""
     services = get_services()
     with services.lock(f"google_ads:metrics:{account_id}", timeout=LOCK_SECONDS) as locked:
         if not locked:
             return 0
-        return sync_google_ads_metrics(
+        rows = sync_google_ads_metrics(
             services.uow(uuid.UUID(company_id)),
             gateway=services.google_ads,
             box=services.google_ads_box,
@@ -114,6 +122,28 @@ def sync_metrics(
             clock=services.clock,
             with_terms=with_terms,
         )
+        changed = enforce_google_ads_limits(
+            services.uow(uuid.UUID(company_id)),
+            gateway=services.google_ads,
+            box=services.google_ads_box,
+            account_id=uuid.UUID(account_id),
+            clock=services.clock,
+        )
+        bad_terms = (
+            warn_google_ads_bad_terms(
+                services.uow(uuid.UUID(company_id)),
+                account_id=uuid.UUID(account_id),
+                clock=services.clock,
+            )
+            if with_terms
+            else 0
+        )
+    if changed or bad_terms:
+        log.info(
+            "limite ou termos do google ads",
+            extra={"account_id": account_id, "changed": changed, "bad_terms": bad_terms},
+        )
+    return rows
 
 
 @app.task(name="avant.google_ads.schedule_changes", soft_time_limit=5 * 60, time_limit=6 * 60)
@@ -143,6 +173,42 @@ def sync_changes(company_id: str, account_id: str) -> int:
         if not locked:
             return 0
         return sync_google_ads_changes(
+            services.uow(uuid.UUID(company_id)),
+            gateway=services.google_ads,
+            box=services.google_ads_box,
+            account_id=uuid.UUID(account_id),
+            clock=services.clock,
+        )
+
+
+@app.task(name="avant.google_ads.schedule_rules", soft_time_limit=5 * 60, time_limit=6 * 60)
+def schedule_rules() -> int:
+    """Todo dia às 09:20 UTC (06:20 em São Paulo), depois da sincronia de ontem das 08:45: uma
+    tarefa por conta com regra ligada. Varre todas as Empresas com ``trusted_uow()``."""
+    targets = google_ads_rule_accounts(get_services().trusted_uow())
+    for target in targets:
+        run_rules.delay(str(target.company_id), str(target.target_id))
+    return len(targets)
+
+
+@app.task(
+    name="avant.google_ads.run_rules",
+    autoretry_for=RETRY_FOR,
+    retry_backoff=60,
+    retry_backoff_max=8 * 60,
+    retry_jitter=False,
+    max_retries=4,
+    soft_time_limit=12 * 60,
+    time_limit=14 * 60,
+)
+def run_rules(company_id: str, account_id: str) -> int:
+    """Escala o orçamento e o CPC e pausa pelo ROI de ontem; o core não repete a decisão do
+    mesmo dia."""
+    services = get_services()
+    with services.lock(f"google_ads:rules:{account_id}", timeout=LOCK_SECONDS) as locked:
+        if not locked:
+            return 0
+        return run_google_ads_rules(
             services.uow(uuid.UUID(company_id)),
             gateway=services.google_ads,
             box=services.google_ads_box,

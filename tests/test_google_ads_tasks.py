@@ -7,7 +7,11 @@ from datetime import date, datetime
 from typing import Any
 
 import pytest
-from avant_core.google_ads.enums import GoogleAdsAccountStatus, GoogleAdsLevel
+from avant_core.google_ads.enums import (
+    GoogleAdsAccountStatus,
+    GoogleAdsLevel,
+    GoogleAdsOnLimit,
+)
 from avant_core.google_ads.errors import GoogleAdsUnavailable
 from avant_core.google_ads.models import (
     GoogleAdsAccountData,
@@ -19,6 +23,7 @@ from avant_core.google_ads.models import (
     GoogleAdsMetricRow,
     GoogleAdsObjectData,
     GoogleAdsPlacementRow,
+    GoogleAdsRule,
     GoogleAdsSearchTermRow,
     GoogleAdsToken,
 )
@@ -32,6 +37,7 @@ from avant_worker.services import GoogleAdsNotConfigured, Services
 from avant_worker.tasks.google_ads import (
     schedule_changes,
     schedule_metrics,
+    schedule_rules,
     schedule_structure,
     sync_changes,
     sync_login,
@@ -122,6 +128,56 @@ class FakeGoogleAds:
     def set_url_suffix(self, token: str, login: str, customer_id: str, suffix: str) -> None:
         """Não usado pelo worker."""
 
+    def set_status(
+        self,
+        token: str,
+        login: str,
+        customer_id: str,
+        level: GoogleAdsLevel,
+        resource_id: str,
+        status: str,
+    ) -> None:
+        """Guarda a mudança de situação."""
+        self.calls.append(f"status:{resource_id}:{status}")
+
+    def set_campaign_budget(
+        self, token: str, login: str, customer_id: str, campaign_id: str, amount_micros: int
+    ) -> None:
+        """Guarda o orçamento novo."""
+        self.calls.append(f"budget:{campaign_id}:{amount_micros}")
+
+    def set_keyword(
+        self,
+        token: str,
+        login: str,
+        customer_id: str,
+        ad_group_id: str,
+        criterion_id: str,
+        *,
+        status: str | None = None,
+        cpc_bid_micros: int | None = None,
+    ) -> None:
+        """Guarda a mudança da palavra-chave."""
+        self.calls.append(f"keyword:{criterion_id}:{status}:{cpc_bid_micros}")
+
+    def negate_term(
+        self, token: str, login: str, customer_id: str, campaign_id: str, text: str
+    ) -> str:
+        """Não usado pelo worker."""
+        raise NotImplementedError
+
+    def exclude_placement(
+        self,
+        token: str,
+        login: str,
+        customer_id: str,
+        campaign_id: str,
+        placement: str,
+        placement_type: str,
+    ) -> str:
+        """Não usado pelo worker."""
+        raise NotImplementedError
+
     def revoke(self, token: str) -> None:
         """Não usado pelo worker."""
 
@@ -166,6 +222,8 @@ def test_tasks_go_to_the_google_ads_queue_and_retry_on_unavailable() -> None:
         "avant.google_ads.sync_metrics",
         "avant.google_ads.schedule_changes",
         "avant.google_ads.sync_changes",
+        "avant.google_ads.schedule_rules",
+        "avant.google_ads.run_rules",
     ):
         assert name in app.tasks
         assert _route(name) == {"queue": "google_ads"}
@@ -179,6 +237,11 @@ def test_beat_runs_structure_hourly_and_metrics_every_thirty_minutes() -> None:
     assert schedule["google-ads-metrics-today"]["schedule"].minute == {5, 35}
     assert schedule["google-ads-metrics-late"]["kwargs"] == {"days": 3, "with_terms": True}
     assert schedule["google-ads-changes"]["task"] == "avant.google_ads.schedule_changes"
+    yesterday = schedule["google-ads-metrics-yesterday"]
+    assert (yesterday["schedule"].hour, yesterday["schedule"].minute) == ({8}, {45})
+    assert yesterday["kwargs"] == {"days": 2}
+    rules = schedule["google-ads-rules"]["schedule"]
+    assert (rules.hour, rules.minute) == ({9}, {20})
 
 
 def test_structure_metrics_and_changes_fill_the_company(
@@ -215,3 +278,31 @@ def test_worker_without_the_google_client_fails_clearly(services: Services) -> N
         assert services.google_ads
     with pytest.raises(GoogleAdsNotConfigured):
         assert services.google_ads_box
+
+
+def test_metrics_enforce_the_monthly_limit_and_rules_skip_accounts_without_site(
+    services: Services, google_ads: FakeGoogleAds
+) -> None:
+    company_id, login = _login(services)
+    schedule_structure.delay().get()
+    with services.uow(company_id) as uow:
+        account = uow.google_ads_accounts.list_for_login(login.id)[0]
+        account.monthly_limit_micros = 1_000_000
+        account.on_limit = GoogleAdsOnLimit.PAUSE
+        uow.google_ads_rules.add(
+            GoogleAdsRule(
+                company_id=company_id,
+                account_id=account.id,
+                object_external_id="333",
+                level=GoogleAdsLevel.AD,
+                updated_at=services.clock.now(),
+                pause=True,
+                days=1,
+            )
+        )
+        uow.commit()
+    schedule_metrics.delay().get()
+    assert "status:111:PAUSED" in google_ads.calls
+    assert _count(services, "google_ads_alerts") == 1
+    assert schedule_rules.delay().get() == 1
+    assert _count(services, "google_ads_rule_decisions") == 0
