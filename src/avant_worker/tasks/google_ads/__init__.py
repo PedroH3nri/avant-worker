@@ -3,6 +3,7 @@ regras automáticas."""
 
 from avant_worker.tasks.google_ads.google_ads_tasks import (
     LATE_DAYS,
+    run_job,
     run_rules,
     schedule_changes,
     schedule_metrics,
@@ -15,6 +16,7 @@ from avant_worker.tasks.google_ads.google_ads_tasks import (
 
 __all__ = [
     "LATE_DAYS",
+    "run_job",
     "run_rules",
     "schedule_changes",
     "schedule_metrics",
