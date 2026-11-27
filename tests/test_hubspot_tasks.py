@@ -12,6 +12,7 @@ from avant_core.hubspot.errors import HubspotRejected
 from avant_core.hubspot.models import (
     HubspotAssociation,
     HubspotCard,
+    HubspotLead,
     HubspotLink,
     HubspotProperty,
     HubspotProspectPage,
@@ -94,6 +95,10 @@ class FakeHubspot:
     def prospects(self, stages: list[str], query: str, after: str | None) -> HubspotProspectPage:
         """Não usado pelo worker."""
         return HubspotProspectPage()
+
+    def leads_since(self, since: datetime) -> list[HubspotLead]:
+        """Nenhum lead."""
+        return []
 
 
 def _client(services: Services) -> uuid.UUID:
