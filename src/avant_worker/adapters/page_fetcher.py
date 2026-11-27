@@ -39,6 +39,7 @@ from avant_core.site_checklists.models import FetchedPage
 USER_AGENT = "AvantChecklist/1.0 (+https://avant.groone.com)"
 TIMEOUT_SECONDS = 10.0
 MAX_BYTES = 2 * 1024 * 1024
+TEXT_TYPES = ("html", "text", "javascript", "ecmascript")
 DOMAIN_INTERVAL_SECONDS = 1.0
 TOTAL_SECONDS = 20.0
 ALLOWED_PORTS = frozenset({80, 443})
@@ -192,7 +193,7 @@ class HttpPageFetcher:
             timeout=TIMEOUT_SECONDS,
             follow_redirects=True,
             max_redirects=5,
-            headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9"},
+            headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9,*/*;q=0.5"},
         )
         self._interval = interval
         self._last_request: dict[str, float] = {}
@@ -221,9 +222,9 @@ class HttpPageFetcher:
 
     def _read(self, response: httpx.Response) -> str:
         """O texto da resposta até 2 MB ou o fim do prazo (o que chegou, sem marca de corte).
-        O que não é texto volta vazio."""
+        O que não é texto nem script volta vazio."""
         kind = response.headers.get("content-type", "text/html").lower()
-        if "html" not in kind and "text" not in kind:
+        if not any(word in kind for word in TEXT_TYPES):
             return ""
         chunks: list[bytes] = []
         size = 0

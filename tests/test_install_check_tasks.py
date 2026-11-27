@@ -96,13 +96,14 @@ def test_daily_checks_fetch_each_page_once(services: Services) -> None:
         }
     )
     services._page_fetcher = fetcher
-    assert daily_install_checks.delay().get() == {"sites": 1, "items": 3}
+    assert daily_install_checks.delay().get() == {"sites": 1, "items": 4}
     assert fetcher.calls.count("https://blog.com/") == 1
     with services.uow(client.id) as uow:
         checks = [
             uow.install_checks.get(InstallTarget.AD_TAG, tag.id),
             uow.install_checks.get(InstallTarget.LOADER, loader.id),
             uow.install_checks.get(InstallTarget.REWARD, reward.id),
+            uow.install_checks.get(InstallTarget.SECURITY, tag.site_id),
         ]
         assert all(check is not None for check in checks)
         assert {check.source for check in checks if check} == {InstallCheckSource.DAILY}
