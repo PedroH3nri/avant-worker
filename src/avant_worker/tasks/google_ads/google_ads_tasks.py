@@ -41,6 +41,9 @@ from avant_worker.services import get_services
 log = logging.getLogger("avant.worker.google_ads")
 
 LOCK_SECONDS = 15 * 60
+JOB_SOFT_LIMIT_SECONDS = 5 * 60
+JOB_HARD_LIMIT_SECONDS = 6 * 60
+JOB_LOCK_SECONDS = JOB_HARD_LIMIT_SECONDS + 60
 RETRY_FOR = (GoogleAdsUnavailable,)
 TODAY = 1
 LATE_DAYS = 3
@@ -224,10 +227,16 @@ def run_rules(company_id: str, account_id: str) -> int:
         )
 
 
-@app.task(name="avant.google_ads.run_job", soft_time_limit=5 * 60, time_limit=6 * 60)
-def run_job(company_id: str, job_id: str) -> str:
+@app.task(
+    name="avant.google_ads.run_job",
+    bind=True,
+    soft_time_limit=JOB_SOFT_LIMIT_SECONDS,
+    time_limit=JOB_HARD_LIMIT_SECONDS,
+    max_retries=1,
+)
+def run_job(self: Any, company_id: str, job_id: str) -> str:
     """Cria a campanha ou edita o nível pelo job; rodar de novo não chama o Google outra vez.
-    Campanha criada pede a sincronia do login, para ela aparecer na tela."""
+    Trava ocupada (talvez de um worker que caiu) tenta de novo depois que ela vence."""
     services = get_services()
     company_uuid = uuid.UUID(company_id)
 
@@ -235,9 +244,9 @@ def run_job(company_id: str, job_id: str) -> str:
         """Avisa a tela aberta que o job mudou de situação."""
         publish(services.redis, company_uuid, GOOGLE_ADS_JOB_UPDATED, {"job_id": str(job.id)})
 
-    with services.lock(f"google_ads:job:{job_id}", timeout=LOCK_SECONDS) as locked:
+    with services.lock(f"google_ads:job:{job_id}", timeout=JOB_LOCK_SECONDS) as locked:
         if not locked:
-            return "locked"
+            raise self.retry(countdown=JOB_LOCK_SECONDS)
         job = execute_google_ads_job(
             services.uow(company_uuid),
             gateway=services.google_ads,
